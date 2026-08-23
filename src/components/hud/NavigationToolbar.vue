@@ -1,13 +1,16 @@
 <script setup lang="ts">
 import type { CameraPresetType } from "@/composables/useDigitalTwin";
+import type { GrainVisualMode } from "@/3d/meshes/grainVolume";
 
 defineProps<{
   activePreset: CameraPresetType;
   isAutoRotating: boolean;
+  visualMode?: GrainVisualMode;
 }>();
 
 defineEmits<{
   (e: "set-preset", preset: CameraPresetType): void;
+  (e: "set-visual-mode", mode: GrainVisualMode): void;
   (e: "zoom-in"): void;
   (e: "zoom-out"): void;
   (e: "toggle-auto-rotate"): void;
@@ -58,6 +61,31 @@ defineEmits<{
         >
           <span class="btn-icon">🏢</span>
           <span class="btn-label">Lateral</span>
+        </button>
+      </div>
+
+      <div class="nav-divider"></div>
+
+      <!-- Alternador de Visualização: Nível vs Heatmap -->
+      <div class="nav-group mode-toggle-group">
+        <button
+          class="nav-btn"
+          :class="{ active: (visualMode || 'heatmap') === 'level' }"
+          @click="$emit('set-visual-mode', 'level')"
+          title="Modo Nível: Exibe a massa de grãos com relevo na cor natural"
+        >
+          <span class="btn-icon">🌾</span>
+          <span class="btn-label">Nível</span>
+        </button>
+
+        <button
+          class="nav-btn"
+          :class="{ active: (visualMode || 'heatmap') === 'heatmap' }"
+          @click="$emit('set-visual-mode', 'heatmap')"
+          title="Modo Heatmap: Exibe o mapa de calor térmico volumétrico 3D"
+        >
+          <span class="btn-icon">🔥</span>
+          <span class="btn-label">Heatmap</span>
         </button>
       </div>
 

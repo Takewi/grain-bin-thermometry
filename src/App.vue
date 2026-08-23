@@ -19,6 +19,8 @@ const {
   toggleAutoRotate,
   isAutoRotating,
   currentCameraPreset,
+  visualMode,
+  setVisualMode,
   silosList,
   selectedStorage,
   selectedDetail,
@@ -49,12 +51,14 @@ onMounted(() => {
         @reset-view="resetView"
       />
 
-      <!-- Barra Flutuante de Ferramentas de Câmera 3D -->
+      <!-- Barra Flutuante de Ferramentas de Câmera 3D e Modo Visual -->
       <NavigationToolbar
         v-if="isLoaded"
         :active-preset="currentCameraPreset"
         :is-auto-rotating="isAutoRotating"
+        :visual-mode="visualMode"
         @set-preset="setCameraPreset"
+        @set-visual-mode="setVisualMode"
         @zoom-in="zoomIn"
         @zoom-out="zoomOut"
         @toggle-auto-rotate="toggleAutoRotate"

@@ -15,7 +15,12 @@ import {
   type PendulumVisualizerInstance,
   type SensorInstanceMetadata,
 } from "@/3d/meshes/pendulumMesh";
-import { renderGrainVolume } from "@/3d/meshes/grainVolume";
+import {
+  renderGrainVolume,
+  applyGrainVolumeMode,
+  type GrainVisualMode,
+} from "@/3d/meshes/grainVolume";
+export type { GrainVisualMode };
 import { setupPlantEnvironment } from "@/3d/scene/plantEnvironment";
 import { CameraController, type CameraPresetType } from "@/3d/controllers/cameraController";
 export type { CameraPresetType };
@@ -32,6 +37,7 @@ export function useDigitalTwin() {
   const isLoadingDetail = ref(false);
   const isAutoRotating = ref(false);
   const currentCameraPreset = ref<CameraPresetType>("iso");
+  const visualMode = ref<GrainVisualMode>("heatmap");
   const silosList = ref<SiloSummary[]>([]);
   const selectedStorage = ref<SiloSummary | null>(null);
   const selectedDetail = ref<StorageDetail | null>(null);
@@ -245,7 +251,9 @@ export function useDigitalTwin() {
           bundle.data.type,
           bundle.dimensions,
           fillPercentage,
-          detail.levelMaps[0]
+          detail.levelMaps[0],
+          visualMode.value,
+          bundle.data.tempMed
         );
       }
     } catch (err) {
@@ -314,6 +322,13 @@ export function useDigitalTwin() {
     isAutoRotating.value = cameraController?.isAutoRotating ?? false;
   }
 
+  function setVisualMode(mode: GrainVisualMode) {
+    visualMode.value = mode;
+    if (currentGrainMesh) {
+      applyGrainVolumeMode(currentGrainMesh, mode, selectedStorage.value?.tempMed);
+    }
+  }
+
   function handleResize() {
     engine?.resize();
   }
@@ -337,6 +352,8 @@ export function useDigitalTwin() {
     toggleAutoRotate,
     isAutoRotating,
     currentCameraPreset,
+    visualMode,
+    setVisualMode,
     silosList,
     selectedStorage,
     selectedDetail,

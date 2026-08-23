@@ -35,17 +35,53 @@ function getPendulumGrainTopY(
     : sensorTopY;
 }
 
+export type GrainVisualMode = "level" | "heatmap";
+
+export function applyGrainVolumeMode(
+  grainMesh: Mesh,
+  mode: GrainVisualMode,
+  avgTemp?: number
+): void {
+  const mat = grainMesh.material as StandardMaterial;
+  if (!mat) return;
+
+  if (mode === "heatmap") {
+    // Modo Heatmap: Ativa o mapa de calor por vértice com autoiluminação
+    grainMesh.useVertexColors = true;
+    grainMesh.hasVertexAlpha = true;
+    mat.diffuseColor = new Color3(1.0, 1.0, 1.0);
+    mat.specularColor = new Color3(0.12, 0.12, 0.12);
+    mat.emissiveColor = new Color3(0.26, 0.26, 0.26);
+    mat.alpha = 1.0;
+    mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+  } else {
+    // Modo Nível: Desativa totalmente as cores de vértice para ser 100% da MESMA cor uniforme (cor da temp média)
+    grainMesh.useVertexColors = false;
+    grainMesh.hasVertexAlpha = false;
+    const temp = avgTemp ?? (grainMesh.metadata?.avgTemp ?? 23);
+    const [r, g, b] = temperatureToRGB(temp);
+    mat.diffuseColor = new Color3(r, g, b);
+    mat.specularColor = new Color3(0.12, 0.12, 0.12);
+    mat.emissiveColor = new Color3(r * 0.35, g * 0.35, b * 0.35);
+    mat.alpha = 0.44;
+    mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+  }
+}
+
 export function renderGrainVolume(
   scene: Scene,
   parentPos: Vector3,
   type: StorageType,
   dimensions: { width: number; height: number; depth: number; radius: number },
   fillPercentage: number,
-  levelMap?: LevelMap
+  levelMap?: LevelMap,
+  mode: GrainVisualMode = "heatmap",
+  avgTemp: number = 23
 ): Mesh {
   const { GRAIN } = MATERIAL_CONFIG;
   const grainMesh = new Mesh(`grainVolume_${Math.random()}`, scene);
   grainMesh.position = parentPos.clone();
+  grainMesh.metadata = { avgTemp };
 
   // Alturas verticais limites de termometria
   const sensorBottomY = THERMOMETRY_CONFIG.SENSOR_BOTTOM_OFFSET_Y;
@@ -102,9 +138,10 @@ export function renderGrainVolume(
       outerRingTopY - (centerTopY - outerRingTopY) * 0.4
     );
 
-    // Geração da malha radial com cone superior
-    const NS = 36; // Fatias angulares em 360°
-    const NR = 4;  // Anéis concêntricos
+    // Geração da malha radial com cone superior de alta densidade
+    const NS = 48; // Fatias angulares em 360°
+    const NR = 8;  // Anéis concêntricos
+    const NH = 6;  // Fatias verticais na parede lateral
 
     // Vértice central do topo (pico da montanha): index 0
     positions.push(0, centerTopY, 0);
@@ -154,23 +191,30 @@ export function renderGrainVolume(
       }
     }
 
-    // Parede lateral cilíndrica até a base
-    const offsetTopRim = 1 + (NR - 1) * NS;
-    const offsetBottomRim = positions.length / 3;
+    // Parede lateral cilíndrica com camadas verticais (para gradiente vertical perfeito)
+    let previousLayerOffset = 1 + (NR - 1) * NS;
 
-    for (let s = 0; s < NS; s++) {
-      const theta = (s / NS) * Math.PI * 2;
-      positions.push(rMesh * Math.cos(theta), baseY, rMesh * Math.sin(theta));
-    }
+    for (let h = 1; h <= NH; h++) {
+      const t = h / NH;
+      const layerY = wallTopY + (baseY - wallTopY) * t;
+      const currentLayerOffset = positions.length / 3;
 
-    for (let s = 0; s < NS; s++) {
-      const next = (s + 1) % NS;
-      const t1 = offsetTopRim + s;
-      const t2 = offsetTopRim + next;
-      const b1 = offsetBottomRim + s;
-      const b2 = offsetBottomRim + next;
-      indices.push(t1, b1, t2);
-      indices.push(t2, b1, b2);
+      for (let s = 0; s < NS; s++) {
+        const theta = (s / NS) * Math.PI * 2;
+        positions.push(rMesh * Math.cos(theta), layerY, rMesh * Math.sin(theta));
+      }
+
+      for (let s = 0; s < NS; s++) {
+        const next = (s + 1) % NS;
+        const t1 = previousLayerOffset + s;
+        const t2 = previousLayerOffset + next;
+        const b1 = currentLayerOffset + s;
+        const b2 = currentLayerOffset + next;
+        indices.push(t1, b1, t2);
+        indices.push(t2, b1, b2);
+      }
+
+      previousLayerOffset = currentLayerOffset;
     }
 
     // Fundo plano na base
@@ -178,147 +222,146 @@ export function renderGrainVolume(
     positions.push(0, baseY, 0);
     for (let s = 0; s < NS; s++) {
       const next = (s + 1) % NS;
-      indices.push(idxBottomCenter, offsetBottomRim + next, offsetBottomRim + s);
+      indices.push(idxBottomCenter, previousLayerOffset + next, previousLayerOffset + s);
     }
-
   } else {
     // ==========================================
-    // ARMAZÉM GRANELEIRO: TOPO EM FORMA DE ONDA/CRISTAS LONGITUDINAIS
+    // ARMAZÉM GRANELEIRO: TOPO EM CRISTA LONGITUDINAL + ONDAS DE DESCARGA
     // ==========================================
-    const wMesh = dimensions.width * 0.95;
-    const dMesh = dimensions.depth * 0.95;
+    const halfW = dimensions.width * 0.44;
+    const halfD = dimensions.depth * 0.44;
 
-    const sectorHeights: { midY: number; sideY: number }[] = [];
-
-    if (levelMap?.arcRings && levelMap.arcRings.length > 0) {
-      levelMap.arcRings.forEach((sectorData) => {
-        const pendulums = sectorData.pendulums;
-        const pCount = pendulums.length;
-        if (pCount > 0) {
-          const heights = pendulums.map((p) => {
-            return getPendulumGrainTopY(p, sensorTopY + 0.7, sensorBottomY);
-          });
-          // Centro (pêndulos do meio) vs Laterais (pêndulos das pontas)
-          const midIdx1 = Math.floor(pCount / 2) - 1;
-          const midIdx2 = Math.floor(pCount / 2);
-          const midY = (heights[midIdx1] + heights[midIdx2]) / 2;
-          const sideY = (heights[0] + heights[pCount - 1]) / 2;
-          sectorHeights.push({ midY, sideY });
-        }
-      });
-    }
-
-    // Fallback caso não haja setores
-    if (sectorHeights.length === 0) {
-      const ratio = Math.max(0.08, Math.min(1.0, fillPercentage / 100));
-      const defH = dimensions.height * ratio * GRAIN.HEIGHT_MAX_RATIO;
-      for (let s = 0; s < 4; s++) {
-        sectorHeights.push({ midY: defH, sideY: defH * 0.75 });
+    const sectorHeights = [0, 0, 0, 0];
+    const arcRings = levelMap?.arcRings || [];
+    for (let secIdx = 0; secIdx < 4; secIdx++) {
+      const sec = arcRings[secIdx];
+      if (sec && sec.pendulums && sec.pendulums.length > 0) {
+        const heights = sec.pendulums.map((p) =>
+          getPendulumGrainTopY(p, sensorTopY, sensorBottomY)
+        );
+        sectorHeights[secIdx] = heights.reduce((a, b) => a + b, 0) / heights.length;
+      } else {
+        const ratio = Math.max(0.08, Math.min(1.0, fillPercentage / 100));
+        sectorHeights[secIdx] = dimensions.height * ratio * GRAIN.HEIGHT_MAX_RATIO;
       }
     }
 
-    // Função de interpolação do perfil 3D de topo do armazém (montanha transversal + onda longitudinal)
-    const getTopY = (x: number, z: number): number => {
-      const uZ = (z + dMesh / 2) / dMesh; // 0 a 1 ao longo da profundidade
-      const secFloat = uZ * (sectorHeights.length - 1);
-      const secIdx = Math.min(sectorHeights.length - 2, Math.max(0, Math.floor(secFloat)));
-      const frac = secFloat - secIdx;
+    const NX = 36; // Resolução transversal
+    const NZ = 36; // Resolução longitudinal
+    const NY = 6;  // Camadas verticais nas paredes
 
-      const sA = sectorHeights[secIdx] || sectorHeights[0];
-      const sB = sectorHeights[secIdx + 1] || sA;
+    // Grid do topo
+    for (let iz = 0; iz <= NZ; iz++) {
+      const v = iz / NZ;
+      const z = -halfD + v * (2 * halfD);
 
-      // Interpolação suave cúbica entre setores
-      const smoothFrac = frac * frac * (3 - 2 * frac);
-      const curMidY = sA.midY + (sB.midY - sA.midY) * smoothFrac;
-      const curSideY = sA.sideY + (sB.sideY - sA.sideY) * smoothFrac;
+      const secNorm = v * 3;
+      const secFloor = Math.min(2, Math.floor(secNorm));
+      const secFrac = secNorm - secFloor;
+      const h0 = sectorHeights[secFloor] || sectorHeights[0];
+      const h1 = sectorHeights[secFloor + 1] || h0;
+      const ridgeY = h0 + (h1 - h0) * secFrac;
 
-      // Curvatura transversal em arco (cume no centro X = 0, talude nas laterais)
-      const uX = x / (wMesh / 2);
-      const archFactor = Math.max(0, 1 - uX * uX);
+      for (let ix = 0; ix <= NX; ix++) {
+        const u = ix / NX;
+        const x = -halfW + u * (2 * halfW);
 
-      return curSideY + (curMidY - curSideY) * archFactor;
-    };
+        const distFromCenter = Math.abs((ix - NX / 2) / (NX / 2));
+        const archProfile = Math.max(0, 1 - Math.pow(distFromCenter, 1.8));
+        const edgeY = Math.max(baseY + 0.3, ridgeY * 0.35);
+        const y = edgeY + (ridgeY - edgeY) * archProfile;
 
-    const NX = 20;
-    const NZ = 30;
-    const dx = wMesh / NX;
-    const dz = dMesh / NZ;
-
-    // 1. Grade Superior
-    for (let j = 0; j <= NZ; j++) {
-      const z = -dMesh / 2 + j * dz;
-      for (let i = 0; i <= NX; i++) {
-        const x = -wMesh / 2 + i * dx;
-        const y = getTopY(x, z);
         positions.push(x, y, z);
       }
     }
 
-    for (let j = 0; j < NZ; j++) {
-      const rowA = j * (NX + 1);
-      const rowB = (j + 1) * (NX + 1);
-      for (let i = 0; i < NX; i++) {
-        const a1 = rowA + i;
-        const a2 = rowA + i + 1;
-        const b1 = rowB + i;
-        const b2 = rowB + i + 1;
-        indices.push(a1, b1, a2);
-        indices.push(a2, b1, b2);
+    // Triângulos do topo
+    for (let iz = 0; iz < NZ; iz++) {
+      for (let ix = 0; ix < NX; ix++) {
+        const row1 = iz * (NX + 1);
+        const row2 = (iz + 1) * (NX + 1);
+        const a = row1 + ix;
+        const b = row1 + ix + 1;
+        const c = row2 + ix;
+        const d = row2 + ix + 1;
+        indices.push(a, c, b);
+        indices.push(b, c, d);
       }
     }
 
-    // 2. Paredes Laterais Verticais de Fechamento (Norte, Sul, Leste, Oeste)
-    const addWallSegment = (x1: number, y1: number, z1: number, x2: number, y2: number, z2: number) => {
+    // Paredes verticais do armazém (4 faces)
+    const addQuadWall = (
+      x1: number, y1: number, z1: number,
+      x2: number, y2: number, z2: number
+    ) => {
       const startIdx = positions.length / 3;
-      positions.push(x1, y1, z1);
-      positions.push(x2, y2, z2);
-      positions.push(x1, baseY, z1);
-      positions.push(x2, baseY, z2);
-      indices.push(startIdx, startIdx + 2, startIdx + 1);
-      indices.push(startIdx + 1, startIdx + 2, startIdx + 3);
+      for (let h = 0; h <= NY; h++) {
+        const t = h / NY;
+        const py1 = y1 + (baseY - y1) * t;
+        const py2 = y2 + (baseY - y2) * t;
+        positions.push(x1, py1, z1);
+        positions.push(x2, py2, z2);
+      }
+      for (let h = 0; h < NY; h++) {
+        const p1 = startIdx + h * 2;
+        const p2 = startIdx + h * 2 + 1;
+        const p3 = startIdx + (h + 1) * 2;
+        const p4 = startIdx + (h + 1) * 2 + 1;
+        indices.push(p1, p3, p2);
+        indices.push(p2, p3, p4);
+      }
     };
 
-    // Parede Sul (z = -dMesh / 2)
-    for (let i = 0; i < NX; i++) {
-      const x1 = -wMesh / 2 + i * dx;
-      const x2 = -wMesh / 2 + (i + 1) * dx;
-      const z = -dMesh / 2;
-      addWallSegment(x1, getTopY(x1, z), z, x2, getTopY(x2, z), z);
+    // Parede Frontal (Z = -halfD)
+    for (let ix = 0; ix < NX; ix++) {
+      const idxA = ix;
+      const idxB = ix + 1;
+      addQuadWall(
+        positions[idxA * 3], positions[idxA * 3 + 1], positions[idxA * 3 + 2],
+        positions[idxB * 3], positions[idxB * 3 + 1], positions[idxB * 3 + 2]
+      );
     }
-    // Parede Norte (z = +dMesh / 2)
-    for (let i = 0; i < NX; i++) {
-      const x1 = -wMesh / 2 + (i + 1) * dx;
-      const x2 = -wMesh / 2 + i * dx;
-      const z = dMesh / 2;
-      addWallSegment(x1, getTopY(x1, z), z, x2, getTopY(x2, z), z);
+    // Parede Traseira (Z = halfD)
+    const backRow = NZ * (NX + 1);
+    for (let ix = 0; ix < NX; ix++) {
+      const idxA = backRow + ix + 1;
+      const idxB = backRow + ix;
+      addQuadWall(
+        positions[idxA * 3], positions[idxA * 3 + 1], positions[idxA * 3 + 2],
+        positions[idxB * 3], positions[idxB * 3 + 1], positions[idxB * 3 + 2]
+      );
     }
-    // Parede Oeste (x = -wMesh / 2)
-    for (let j = 0; j < NZ; j++) {
-      const z1 = -dMesh / 2 + (j + 1) * dz;
-      const z2 = -dMesh / 2 + j * dz;
-      const x = -wMesh / 2;
-      addWallSegment(x, getTopY(x, z1), z1, x, getTopY(x, z2), z2);
+    // Parede Esquerda (X = -halfW)
+    for (let iz = 0; iz < NZ; iz++) {
+      const idxA = (iz + 1) * (NX + 1);
+      const idxB = iz * (NX + 1);
+      addQuadWall(
+        positions[idxA * 3], positions[idxA * 3 + 1], positions[idxA * 3 + 2],
+        positions[idxB * 3], positions[idxB * 3 + 1], positions[idxB * 3 + 2]
+      );
     }
-    // Parede Leste (x = +wMesh / 2)
-    for (let j = 0; j < NZ; j++) {
-      const z1 = -dMesh / 2 + j * dz;
-      const z2 = -dMesh / 2 + (j + 1) * dz;
-      const x = wMesh / 2;
-      addWallSegment(x, getTopY(x, z1), z1, x, getTopY(x, z2), z2);
+    // Parede Direita (X = halfW)
+    for (let iz = 0; iz < NZ; iz++) {
+      const idxA = iz * (NX + 1) + NX;
+      const idxB = (iz + 1) * (NX + 1) + NX;
+      addQuadWall(
+        positions[idxA * 3], positions[idxA * 3 + 1], positions[idxA * 3 + 2],
+        positions[idxB * 3], positions[idxB * 3 + 1], positions[idxB * 3 + 2]
+      );
     }
 
-  // 3. Fundo Plano na Base
-    const baseStartIdx = positions.length / 3;
-    positions.push(-wMesh / 2, baseY, -dMesh / 2);
-    positions.push(wMesh / 2, baseY, -dMesh / 2);
-    positions.push(wMesh / 2, baseY, dMesh / 2);
-    positions.push(-wMesh / 2, baseY, dMesh / 2);
-    indices.push(baseStartIdx, baseStartIdx + 2, baseStartIdx + 1);
-    indices.push(baseStartIdx, baseStartIdx + 3, baseStartIdx + 2);
+    // Fundo plano na base
+    const b0 = positions.length / 3;
+    positions.push(-halfW, baseY, -halfD);
+    positions.push(halfW, baseY, -halfD);
+    positions.push(halfW, baseY, halfD);
+    positions.push(-halfW, baseY, halfD);
+    indices.push(b0, b0 + 2, b0 + 1);
+    indices.push(b0, b0 + 3, b0 + 2);
   }
 
   // ==========================================
-  // Extração dos Pontos de Amostragem Térmica (Sensores in_grain)
+  // Extração dos Sensores 3D para Heatmap IDW
   // ==========================================
   interface ThermalSamplePoint {
     x: number;
@@ -428,7 +471,7 @@ export function renderGrainVolume(
   }
 
   // ==========================================
-  // Interpolação Térmica 3D (Heatmap Volumétrico IDW)
+  // Interpolação Térmica 3D (Heatmap Volumétrico IDW Suave)
   // ==========================================
   const colors: number[] = [];
   const vertexCount = positions.length / 3;
@@ -447,14 +490,20 @@ export function renderGrainVolume(
       const dy = vy - sp.y;
       const dz = vz - sp.z;
       const distSq = dx * dx + dy * dy + dz * dz;
-      const w = 1 / Math.pow(distSq + 0.6, 1.25);
+      // IDW refinado com decaimento suave
+      const w = 1 / (Math.pow(distSq, 1.25) + 0.35);
       sumWeight += w;
       sumTemp += sp.temp * w;
     }
 
     const vertTemp = sumWeight > 0 ? sumTemp / sumWeight : 23.0;
     const [r, g, b] = temperatureToRGB(vertTemp);
-    colors.push(r, g, b, 0.58);
+
+    // Alpha adaptativo: áreas quentes têm levemente maior opacidade e brilho
+    const tempRatio = Math.max(0, Math.min(1, (vertTemp - 18) / 16));
+    const vertAlpha = 0.44 + tempRatio * 0.20;
+
+    colors.push(r, g, b, vertAlpha);
   }
 
   // Monta a geometria calculada com normais e cores térmicas por vértice
@@ -468,16 +517,14 @@ export function renderGrainVolume(
   vertexData.colors = colors;
   vertexData.applyToMesh(grainMesh);
 
-  grainMesh.hasVertexAlpha = true;
   grainMesh.isPickable = false;
 
-  // Material Heatmap Volumétrico Translúcido
-  const mat = new StandardMaterial(`grainHeatmapMat_${Math.random()}`, scene);
-  mat.diffuseColor = new Color3(1.0, 1.0, 1.0);
-  mat.specularColor = new Color3(0.15, 0.15, 0.15);
-  mat.emissiveColor = new Color3(0.25, 0.25, 0.25); // Autoiluminação para brilho térmico
+  // Material Dinâmico
+  const mat = new StandardMaterial(`grainMat_${Math.random()}`, scene);
   mat.backFaceCulling = false;
   grainMesh.material = mat;
+
+  applyGrainVolumeMode(grainMesh, mode);
 
   return grainMesh;
 }
