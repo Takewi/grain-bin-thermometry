@@ -8,6 +8,9 @@ import {
 } from "@babylonjs/core";
 import { MATERIAL_CONFIG, THERMOMETRY_CONFIG } from "../constants";
 import { temperatureToRGB } from "../utils/colorScale";
+import {
+  createVolumetricHeatmapMaterial,
+} from "../shaders/volumetricHeatmapShader";
 import type { StorageType, LevelMap, SensorReading } from "@/types/storage";
 
 /**
@@ -42,31 +45,27 @@ export function applyGrainVolumeMode(
   mode: GrainVisualMode,
   avgTemp?: number
 ): void {
-  const mat = grainMesh.material as StandardMaterial;
-  if (!mat) return;
+  if (!grainMesh.metadata) return;
 
   if (mode === "heatmap") {
-    // Modo Heatmap: Ativa o mapa de calor por vértice com autoiluminação equilibrada
-    grainMesh.useVertexColors = true;
-    grainMesh.hasVertexAlpha = true;
-    mat.diffuseColor = new Color3(0.65, 0.65, 0.65);
-    mat.specularColor = new Color3(0, 0, 0);
-    mat.emissiveColor = new Color3(0.55, 0.55, 0.55); // Brilho térmico balanceado sem esbranquiçar
-    mat.alpha = 1.0;
-    mat.backFaceCulling = false;
-    mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+    // Modo Heatmap: Aplica o ShaderMaterial de Raymarching Volumétrico 3D
+    if (grainMesh.metadata.heatmapMat) {
+      grainMesh.material = grainMesh.metadata.heatmapMat;
+    }
   } else {
-    // Modo Nível: Desativa totalmente as cores de vértice para ser 100% da MESMA cor uniforme (cor da temp média)
-    grainMesh.useVertexColors = false;
-    grainMesh.hasVertexAlpha = false;
-    const temp = avgTemp ?? (grainMesh.metadata?.avgTemp ?? 23);
-    const [r, g, b] = temperatureToRGB(temp);
-    mat.diffuseColor = new Color3(r, g, b);
-    mat.specularColor = new Color3(0.12, 0.12, 0.12);
-    mat.emissiveColor = new Color3(r * 0.45, g * 0.45, b * 0.45);
-    mat.alpha = 0.44;
-    mat.backFaceCulling = false;
-    mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+    // Modo Nível: Aplica o StandardMaterial monocromático uniforme da temperatura média
+    if (grainMesh.metadata.levelMat) {
+      const levelMat = grainMesh.metadata.levelMat as StandardMaterial;
+      const temp = avgTemp ?? (grainMesh.metadata.avgTemp ?? 23);
+      const [r, g, b] = temperatureToRGB(temp);
+      levelMat.diffuseColor = new Color3(r, g, b);
+      levelMat.specularColor = new Color3(0.12, 0.12, 0.12);
+      levelMat.emissiveColor = new Color3(r * 0.45, g * 0.45, b * 0.45);
+      levelMat.alpha = 0.44;
+      levelMat.backFaceCulling = false;
+      levelMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+      grainMesh.material = levelMat;
+    }
   }
 }
 
@@ -95,6 +94,7 @@ export function renderGrainVolume(
   const positions: number[] = [];
   const indices: number[] = [];
   const baseY = 0.05; // Piso base de apoio
+  let maxTopY = dimensions.height * 0.7;
 
   if (type === "SILO") {
     // ==========================================
@@ -110,6 +110,7 @@ export function renderGrainVolume(
       const ratio = Math.max(0.08, Math.min(1.0, fillPercentage / 100));
       centerTopY = dimensions.height * ratio * GRAIN.HEIGHT_MAX_RATIO;
     }
+    maxTopY = centerTopY;
 
     // 2. Alturas médias dos anéis interno e externo
     let innerRingTopY = centerTopY * 0.92;
@@ -262,6 +263,7 @@ export function renderGrainVolume(
         sectorHeights[secIdx] = dimensions.height * ratio * GRAIN.HEIGHT_MAX_RATIO;
       }
     }
+    maxTopY = Math.max(...sectorHeights);
 
     const NX = 36; // Resolução transversal
     const NZ = 36; // Resolução longitudinal
@@ -572,10 +574,30 @@ export function renderGrainVolume(
 
   grainMesh.isPickable = false;
 
-  // Material Dinâmico
-  const mat = new StandardMaterial(`grainMat_${Math.random()}`, scene);
-  mat.backFaceCulling = false;
-  grainMesh.material = mat;
+  // 1. Criação do Shader Material Volumétrico para Heatmap 3D (Raymarching)
+  const heatmapMat = createVolumetricHeatmapMaterial(scene, {
+    dimensions,
+    storageType: type,
+    baseY,
+    topY: maxTopY,
+    levelMap,
+  });
+
+  // 2. Criação do Material Standard Monocromático para o Modo Nível
+  const levelMat = new StandardMaterial(`grainLevelMat_${Math.random()}`, scene);
+  levelMat.backFaceCulling = false;
+
+  grainMesh.metadata = {
+    avgTemp,
+    heatmapMat,
+    levelMat,
+  };
+
+  // Garante liberação de memória GPU ao destruir a malha
+  grainMesh.onDisposeObservable.add(() => {
+    heatmapMat.dispose();
+    levelMat.dispose();
+  });
 
   applyGrainVolumeMode(grainMesh, mode, avgTemp);
 
