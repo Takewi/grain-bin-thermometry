@@ -3,13 +3,16 @@ import {
   MeshBuilder,
   StandardMaterial,
   Color3,
+  Vector2,
   Vector3,
+  Vector4,
   Mesh,
 } from "@babylonjs/core";
 import { STORAGE_GEOMETRY, MATERIAL_CONFIG } from "../constants";
 import {
   createSiloMetalTexture,
   createWarehouseWallTexture,
+  createDarkWarehouseRoofTexture,
   createConcreteBaseTexture,
   createNameplateTexture,
 } from "../textures/proceduralTextures";
@@ -58,11 +61,20 @@ export function buildStorageStructure(
   shellMat.specularPower = 32;
   shellMat.backFaceCulling = false;
 
-  // Material do Telhado Metálico (Sincronizado com o corpo)
+  // Material do Telhado Metálico (Silo e Armazém Graneleiro unificados com acabamento escuro)
   const roofMat = new StandardMaterial(`roofMat_${data.id}`, scene);
-  roofMat.diffuseColor = new Color3(...SHELL.DIFFUSE_RGB);
+  const roofTex = createDarkWarehouseRoofTexture(scene, String(data.id));
+  if (data.type === "SILO") {
+    roofTex.uScale = 6;
+    roofTex.vScale = 2;
+  } else {
+    roofTex.uScale = Math.round(dimensions.width / 2.5);
+    roofTex.vScale = Math.round(dimensions.depth / 3.0);
+  }
+  roofMat.diffuseTexture = roofTex;
+  roofMat.diffuseColor = new Color3(0.55, 0.58, 0.65); // Tonalidade grafite/aço escuro
+  roofMat.emissiveColor = new Color3(0.08, 0.09, 0.12);
   roofMat.specularColor = new Color3(...SHELL.SPECULAR_RGB);
-  roofMat.emissiveColor = new Color3(...SHELL.EMISSIVE_RGB);
   roofMat.specularPower = 32;
   roofMat.backFaceCulling = false;
 
@@ -384,12 +396,23 @@ export function buildStorageStructure(
     const { WAREHOUSE } = STORAGE_GEOMETRY;
 
     // A. Base de concreto
+    const baseTileScale = 4.0;
+    const baseFaceUV: Vector4[] = [
+      new Vector4(0, 0, dimensions.width / baseTileScale, 1),
+      new Vector4(0, 0, dimensions.width / baseTileScale, 1),
+      new Vector4(0, 0, dimensions.depth / baseTileScale, 1),
+      new Vector4(0, 0, dimensions.depth / baseTileScale, 1),
+      new Vector4(0, 0, dimensions.width / baseTileScale, dimensions.depth / baseTileScale),
+      new Vector4(0, 0, dimensions.width / baseTileScale, dimensions.depth / baseTileScale),
+    ];
     const baseBox = MeshBuilder.CreateBox(
       `wh_base_${data.id}`,
       {
         width: dimensions.width * WAREHOUSE.BASE_SCALE,
         depth: dimensions.depth * WAREHOUSE.BASE_SCALE,
         height: WAREHOUSE.BASE_HEIGHT + baseExtraDepth,
+        faceUV: baseFaceUV,
+        wrap: true,
       },
       scene
     );
@@ -404,12 +427,23 @@ export function buildStorageStructure(
 
     // B. Corpo do Galpão
     const bodyHeight = dimensions.height * WAREHOUSE.BODY_HEIGHT_RATIO;
+    const wallTileScale = 3.2; // Escala métrica uniforme para todas as paredes
+    const bodyFaceUV: Vector4[] = [
+      new Vector4(0, 0, dimensions.width / wallTileScale, bodyHeight / wallTileScale),  // Back (+Z)
+      new Vector4(0, 0, dimensions.width / wallTileScale, bodyHeight / wallTileScale),  // Front (-Z)
+      new Vector4(0, 0, dimensions.depth / wallTileScale, bodyHeight / wallTileScale),  // Right (+X)
+      new Vector4(0, 0, dimensions.depth / wallTileScale, bodyHeight / wallTileScale),  // Left (-X)
+      new Vector4(0, 0, dimensions.width / wallTileScale, dimensions.depth / wallTileScale), // Top (+Y)
+      new Vector4(0, 0, dimensions.width / wallTileScale, dimensions.depth / wallTileScale), // Bottom (-Y)
+    ];
     const bodyBox = MeshBuilder.CreateBox(
       `wh_body_${data.id}`,
       {
         width: dimensions.width,
         depth: dimensions.depth,
         height: bodyHeight,
+        faceUV: bodyFaceUV,
+        wrap: true,
       },
       scene
     );
@@ -451,15 +485,18 @@ export function buildStorageStructure(
     const numX = 24;
     const numZ = 12;
     const pathArray: Vector3[][] = [];
+    const roofUvs: Vector2[] = [];
 
     for (let j = 0; j <= numZ; j++) {
       const z = -roofDepth / 2 + (j / numZ) * roofDepth;
       const path: Vector3[] = [];
+      const v = (j / numZ) * (roofDepth / 3.0);
       for (let i = 0; i <= numX; i++) {
         const x = -roofWidth / 2 + (i / numX) * roofWidth;
         const u = x / (roofWidth / 2); // De -1 a +1
         const y = baseY + roofHeight * (1 - u * u); // Arco suave parabólico cobrindo 100% da largura
         path.push(new Vector3(x, y, z));
+        roofUvs.push(new Vector2((i / numX) * (roofWidth / 2.5), v));
       }
       pathArray.push(path);
     }
@@ -468,6 +505,7 @@ export function buildStorageStructure(
       `wh_roof_${data.id}`,
       {
         pathArray,
+        uvs: roofUvs,
         sideOrientation: Mesh.DOUBLESIDE,
       },
       scene
@@ -487,10 +525,27 @@ export function buildStorageStructure(
         gablePaths[0].push(new Vector3(x, baseY, gz));
         gablePaths[1].push(new Vector3(x, yTop, gz));
       }
+
+      // Projeção UV métrica plana que alinha perfeitamente com a fachada do armazém
+      const gableUvs: Vector2[] = [];
+      for (let i = 0; i <= numX; i++) {
+        const x = -roofWidth / 2 + (i / numX) * roofWidth;
+        const uvX = (x + dimensions.width / 2) / wallTileScale;
+        gableUvs.push(new Vector2(uvX, 0));
+      }
+      for (let i = 0; i <= numX; i++) {
+        const x = -roofWidth / 2 + (i / numX) * roofWidth;
+        const u = x / (roofWidth / 2);
+        const yTop = baseY + roofHeight * (1 - u * u);
+        const uvX = (x + dimensions.width / 2) / wallTileScale;
+        gableUvs.push(new Vector2(uvX, (yTop - baseY) / wallTileScale));
+      }
+
       const gable = MeshBuilder.CreateRibbon(
         `wh_gable_${data.id}_${gIdx}`,
         {
           pathArray: gablePaths,
+          uvs: gableUvs,
           sideOrientation: Mesh.DOUBLESIDE,
         },
         scene
@@ -501,12 +556,56 @@ export function buildStorageStructure(
       shellMeshes.push(gable);
     });
 
-    // E. Lanternim de Ventilação Central Integrado no Topo do Arco
+    // D.2. Nervuras Estruturais Arqueadas 3D (Vigas em Arco correspondentes aos pilares, similar às nervuras do silo)
+    for (let c = 0; c < columnCount; c++) {
+      const cz = -dimensions.depth * 0.42 + (c / (columnCount - 1)) * (dimensions.depth * 0.84);
+      const ribPoints: Vector3[] = [];
+      const ribSegs = 20;
+      for (let s = 0; s <= ribSegs; s++) {
+        const rx = -roofWidth / 2 + (s / ribSegs) * roofWidth;
+        const ru = rx / (roofWidth / 2);
+        const ry = baseY + roofHeight * (1 - ru * ru) + 0.04;
+        ribPoints.push(new Vector3(rx, ry, cz));
+      }
+      const roofRib = MeshBuilder.CreateTube(
+        `wh_roof_rib_${data.id}_${c}`,
+        {
+          path: ribPoints,
+          radius: 0.055,
+          tessellation: 12,
+        },
+        scene
+      );
+      roofRib.material = steelMat;
+      roofRib.parent = root;
+      roofRib.isPickable = true;
+      shellMeshes.push(roofRib);
+    }
+
+    // D.3. Perfis de Beiral/Arremate Lateral
+    [-roofWidth / 2, roofWidth / 2].forEach((ex, eIdx) => {
+      const eaveFascia = MeshBuilder.CreateBox(
+        `wh_eave_fascia_${data.id}_${eIdx}`,
+        {
+          width: 0.12,
+          depth: roofDepth,
+          height: 0.16,
+        },
+        scene
+      );
+      eaveFascia.position = new Vector3(ex, baseY + 0.08, 0);
+      eaveFascia.material = steelMat;
+      eaveFascia.parent = root;
+      eaveFascia.isPickable = true;
+      shellMeshes.push(eaveFascia);
+    });
+
+    // E. Barra Superior / Lanternim de Ventilação Central (Estende até as pontas sem deixar borda)
     const ventMonitor = MeshBuilder.CreateBox(
       `wh_vent_${data.id}`,
       {
         width: 1.2,
-        depth: roofDepth * 0.88,
+        depth: roofDepth,
         height: 0.22,
       },
       scene

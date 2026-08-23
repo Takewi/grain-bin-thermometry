@@ -51,7 +51,7 @@ export function useDigitalTwin() {
     engine = new Engine(canvas, true, {
       preserveDrawingBuffer: true,
       stencil: true,
-      antialias: true,
+      antialias: false,
     });
 
     scene = new Scene(engine);

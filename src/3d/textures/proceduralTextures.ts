@@ -67,7 +67,7 @@ export function createSiloMetalTexture(scene: Scene, id: string): DynamicTexture
 }
 
 /**
- * Gera textura de painéis industriais verticais para o Armazém Graneleiro
+ * Gera textura de painéis industriais verticais homogênea para o Armazém Graneleiro
  */
 export function createWarehouseWallTexture(scene: Scene, id: string): DynamicTexture {
   const width = 512;
@@ -75,31 +75,50 @@ export function createWarehouseWallTexture(scene: Scene, id: string): DynamicTex
   const texture = new DynamicTexture(`wh_wall_tex_${id}`, { width, height }, scene, false);
   const ctx = texture.getContext() as CanvasRenderingContext2D;
 
-  // Fundo metálico base
-  ctx.fillStyle = "#8a939e";
+  // Fundo metálico base idêntico ao silo para homogeneidade
+  ctx.fillStyle = "#8e97a3";
   ctx.fillRect(0, 0, width, height);
 
-  // Frisos trapezoidais verticais uniformes
+  // Painéis e frisos trapezoidais verticais uniformes
   const panelWidth = 32;
   for (let x = 0; x < width; x += panelWidth) {
-    ctx.fillStyle = "rgba(40, 45, 55, 0.25)";
+    // Sombra do friso
+    ctx.fillStyle = "rgba(35, 40, 50, 0.30)";
     ctx.fillRect(x, 0, 3, height);
 
-    ctx.fillStyle = "rgba(160, 170, 185, 0.3)";
-    ctx.fillRect(x + 3, 0, 14, height);
+    // Corpo suave do friso
+    ctx.fillStyle = "rgba(165, 175, 188, 0.35)";
+    ctx.fillRect(x + 3, 0, 16, height);
 
-    ctx.fillStyle = "rgba(255, 255, 255, 0.22)";
-    ctx.fillRect(x + 17, 0, 3, height);
+    // Destaque de luz
+    ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
+    ctx.fillRect(x + 19, 0, 3, height);
+
+    // Linha de fixação/rebite a cada altura
+    for (let y = 32; y < height; y += 64) {
+      ctx.fillStyle = "rgba(30, 35, 45, 0.4)";
+      ctx.beginPath();
+      ctx.arc(x + 10, y, 1.2, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
 
-  texture.uScale = 4;
-  texture.vScale = 2;
+  // Micro-granulação metálica fina
+  ctx.fillStyle = "rgba(255, 255, 255, 0.02)";
+  for (let i = 0; i < 400; i++) {
+    const rx = Math.random() * width;
+    const ry = Math.random() * height;
+    ctx.fillRect(rx, ry, 1, 1);
+  }
+
+  texture.wrapU = 1;
+  texture.wrapV = 1;
   texture.update();
   return texture;
 }
 
 /**
- * Gera textura de telhado industrial trapezoidal uniforme
+ * Gera textura de telhado em chapa de aço galvanizado ondulado (estilo silo) para o Armazém Graneleiro
  */
 export function createRoofMetalTexture(scene: Scene, id: string): DynamicTexture {
   const width = 512;
@@ -107,19 +126,127 @@ export function createRoofMetalTexture(scene: Scene, id: string): DynamicTexture
   const texture = new DynamicTexture(`roof_tex_${id}`, { width, height }, scene, false);
   const ctx = texture.getContext() as CanvasRenderingContext2D;
 
-  ctx.fillStyle = "#8a939e";
+  // Fundo metálico base idêntico ao silo para homogeneidade
+  ctx.fillStyle = "#8e97a3";
   ctx.fillRect(0, 0, width, height);
 
-  const step = 20;
-  for (let x = 0; x < width; x += step) {
-    ctx.fillStyle = "rgba(35, 40, 50, 0.3)";
-    ctx.fillRect(x, 0, 2, height);
-    ctx.fillStyle = "rgba(255, 255, 255, 0.25)";
-    ctx.fillRect(x + 2, 0, 2, height);
+  // Ondulações senoidais contínuas de chapa galvanizada
+  const waveStep = 16;
+  for (let x = 0; x < width; x += waveStep) {
+    // Sombra da calha/ondulação
+    ctx.fillStyle = "rgba(45, 50, 60, 0.24)";
+    ctx.fillRect(x, 0, 3, height);
+
+    // Crista suave da onda
+    ctx.fillStyle = "rgba(165, 175, 188, 0.38)";
+    ctx.fillRect(x + 3, 0, 8, height);
+
+    // Reflexo de luz na crista
+    ctx.fillStyle = "rgba(255, 255, 255, 0.30)";
+    ctx.fillRect(x + 3, 0, 2, height);
   }
 
-  texture.uScale = 4;
-  texture.vScale = 4;
+  // Emendas horizontais de sobreposição de chapas a cada 64px (idêntico ao silo)
+  for (let y = 0; y < height; y += 64) {
+    // Sombra da sobreposição
+    ctx.fillStyle = "rgba(35, 40, 50, 0.35)";
+    ctx.fillRect(0, y - 1, width, 2);
+
+    // Borda iluminada da chapa
+    ctx.fillStyle = "rgba(255, 255, 255, 0.40)";
+    ctx.fillRect(0, y + 1, width, 1);
+
+    // Linha de fixadores / rebites galvanizados
+    for (let x = 8; x < width; x += 16) {
+      ctx.fillStyle = "rgba(30, 35, 45, 0.50)";
+      ctx.beginPath();
+      ctx.arc(x, y, 1.5, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(255, 255, 255, 0.65)";
+      ctx.beginPath();
+      ctx.arc(x - 0.5, y - 0.5, 0.8, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Micro-granulação metálica fina
+  ctx.fillStyle = "rgba(255, 255, 255, 0.03)";
+  for (let i = 0; i < 500; i++) {
+    const rx = Math.random() * width;
+    const ry = Math.random() * height;
+    ctx.fillRect(rx, ry, 1, 1);
+  }
+
+  texture.wrapU = 1;
+  texture.wrapV = 1;
+  texture.update();
+  return texture;
+}
+
+/**
+ * Gera textura metálica mais escura (chapa de zinco/aço grafite) para o teto curvado do graneleiro
+ */
+export function createDarkWarehouseRoofTexture(scene: Scene, id: string): DynamicTexture {
+  const width = 512;
+  const height = 512;
+  const texture = new DynamicTexture(`wh_dark_roof_tex_${id}`, { width, height }, scene, false);
+  const ctx = texture.getContext() as CanvasRenderingContext2D;
+
+  // Fundo metálico chumbo / grafite escuro
+  ctx.fillStyle = "#4a5360";
+  ctx.fillRect(0, 0, width, height);
+
+  // Ondulações profundas com sombras e cristas contrastadas
+  const waveStep = 16;
+  for (let x = 0; x < width; x += waveStep) {
+    // Sombra profunda da calha da onda
+    ctx.fillStyle = "rgba(20, 24, 32, 0.45)";
+    ctx.fillRect(x, 0, 4, height);
+
+    // Corpo metálico iluminado da onda
+    ctx.fillStyle = "rgba(110, 122, 138, 0.42)";
+    ctx.fillRect(x + 4, 0, 8, height);
+
+    // Crista brilhante com reflexo especular
+    ctx.fillStyle = "rgba(200, 215, 235, 0.32)";
+    ctx.fillRect(x + 4, 0, 2, height);
+  }
+
+  // Emendas transversais de sobreposição das chapas a cada 64px
+  for (let y = 0; y < height; y += 64) {
+    // Sombra da sobreposição de chapas
+    ctx.fillStyle = "rgba(15, 18, 26, 0.55)";
+    ctx.fillRect(0, y - 1, width, 3);
+
+    // Borda clara da chapa
+    ctx.fillStyle = "rgba(180, 195, 215, 0.38)";
+    ctx.fillRect(0, y + 2, width, 1);
+
+    // Linha de fixadores / rebites galvanizados contrastantes
+    for (let x = 8; x < width; x += 16) {
+      ctx.fillStyle = "rgba(15, 18, 26, 0.7)";
+      ctx.beginPath();
+      ctx.arc(x, y + 1, 1.8, 0, Math.PI * 2);
+      ctx.fill();
+
+      ctx.fillStyle = "rgba(230, 240, 255, 0.85)";
+      ctx.beginPath();
+      ctx.arc(x - 0.5, y + 0.5, 0.9, 0, Math.PI * 2);
+      ctx.fill();
+    }
+  }
+
+  // Micro-granulação metálica fina
+  ctx.fillStyle = "rgba(255, 255, 255, 0.025)";
+  for (let i = 0; i < 600; i++) {
+    const rx = Math.random() * width;
+    const ry = Math.random() * height;
+    ctx.fillRect(rx, ry, 1, 1);
+  }
+
+  texture.wrapU = 1;
+  texture.wrapV = 1;
   texture.update();
   return texture;
 }
