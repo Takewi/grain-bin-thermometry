@@ -52,7 +52,7 @@ uniform float uBaseY;
 uniform float uTopY;
 
 // Sensores (x, y, z locais relativos ao centro do silo, w = temp)
-#define MAX_SENSORS 80
+#define MAX_SENSORS 256
 uniform vec4 uSensors[MAX_SENSORS];
 uniform int uSensorCount;
 
@@ -99,14 +99,14 @@ float sampleTemperature(vec3 pLocal) {
     return sumTemp / sumWeight;
 }
 
-// Verificação de inclusão no volume físico de grãos (cone ou abóbada)
+// Verificação de inclusão no volume físico de grãos (estendendo-se até as paredes laterais)
 bool isInsideGrain(vec3 pLocal) {
     if (pLocal.y < uBaseY || pLocal.y > uTopY) return false;
 
     if (uStorageType == 0) {
         // Silo cilíndrico com cone de talude
         float r = length(pLocal.xz);
-        float maxR = uDimensions.x * 0.96;
+        float maxR = uDimensions.x;
         if (r > maxR) return false;
 
         float normR = r / maxR;
@@ -114,9 +114,9 @@ bool isInsideGrain(vec3 pLocal) {
         if (pLocal.y > coneTop) return false;
         return true;
     } else {
-        // Armazém Graneleiro com arco longitudinal
-        float halfW = uDimensions.x * 0.44;
-        float halfD = uDimensions.z * 0.44;
+        // Armazém Graneleiro com arco longitudinal (vai 100% até as paredes laterais)
+        float halfW = uDimensions.x;
+        float halfD = uDimensions.z;
         if (abs(pLocal.x) > halfW || abs(pLocal.z) > halfD) return false;
 
         float normX = abs(pLocal.x) / halfW;
@@ -131,13 +131,13 @@ void main() {
     vec3 viewDir = -rayDir;
 
     // Extensão do trajeto do raio no interior da massa
-    float marchDistance = (uStorageType == 0) ? (uDimensions.x * 1.85) : (uDimensions.x * 0.88);
-    int STEPS = 28;
+    float marchDistance = max(uDimensions.x, uDimensions.z) * 2.05;
+    int STEPS = 32;
     float stepSize = marchDistance / float(STEPS);
 
     vec4 accumColor = vec4(0.0);
 
-    for (int i = 0; i < 28; i++) {
+    for (int i = 0; i < 32; i++) {
         vec3 sampleLocal = vLocalPosition + rayDir * (float(i) * stepSize);
 
         if (isInsideGrain(sampleLocal)) {
@@ -146,7 +146,7 @@ void main() {
 
             // Densidade volumétrica e brilho térmico
             float tempNorm = clamp((temp - 18.0) / 16.0, 0.0, 1.0);
-            float stepAlpha = 0.040 + tempNorm * 0.048;
+            float stepAlpha = 0.038 + tempNorm * 0.046;
             
             // Autoiluminação do foco de calor
             vec3 emission = col * (0.85 + tempNorm * 0.65);
@@ -243,10 +243,10 @@ export function updateVolumetricHeatmapUniforms(
 ): void {
   const { dimensions, storageType, baseY, topY, levelMap } = params;
 
-  mat.setVector3(
-    "uDimensions",
-    new Vector3(dimensions.radius || dimensions.width / 2, dimensions.height, dimensions.depth)
-  );
+  const halfX = storageType === "SILO" ? dimensions.radius * 0.96 : dimensions.width * 0.44;
+  const halfZ = storageType === "SILO" ? dimensions.radius * 0.96 : dimensions.depth * 0.44;
+
+  mat.setVector3("uDimensions", new Vector3(halfX, dimensions.height, halfZ));
   mat.setInt("uStorageType", storageType === "SILO" ? 0 : 1);
   mat.setFloat("uBaseY", baseY);
   mat.setFloat("uTopY", topY);
@@ -337,8 +337,8 @@ export function updateVolumetricHeatmapUniforms(
     }
   }
 
-  // Preenche até o limite do array de uniforms
-  const clampedVectors = sensorVectors.slice(0, 80);
+  // Preenche todos os sensores até o limite do array de uniforms (256)
+  const clampedVectors = sensorVectors.slice(0, 256);
   mat.setColor4Array("uSensors", clampedVectors);
   mat.setInt("uSensorCount", clampedVectors.length);
 }
