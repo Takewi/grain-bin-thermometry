@@ -368,10 +368,10 @@ export function renderThermometry(
 
     const sCount = p.sensors.length;
     p.sensors.forEach((sensor, sIdx) => {
-      // Distribui os sensores ao longo do pêndulo em camadas concêntricas em arco
+      // Distribui os sensores: sIdx = 0 no topo (mais alto) até sIdx = sCount - 1 na base (mais baixo)
       const y =
         sCount > 1
-          ? pSensorBottomY + (sIdx / (sCount - 1)) * (pSensorTopY - pSensorBottomY)
+          ? pSensorTopY - (sIdx / (sCount - 1)) * (pSensorTopY - pSensorBottomY)
           : (pSensorBottomY + pSensorTopY) / 2;
 
       const visualInfo = getSensorVisualInfo(sensor.temperature, sensor.level);

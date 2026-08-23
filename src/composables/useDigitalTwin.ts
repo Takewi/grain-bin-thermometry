@@ -237,14 +237,15 @@ export function useDigitalTwin() {
           bundle.dimensions
         );
 
-        // 2. Renderiza massa de grão
+        // 2. Renderiza massa de grão adaptativa com topografia em cone/onda baseada nos sensores
         const fillPercentage = detail.levelMaps[0]?.porcentagem || 0;
         currentGrainMesh = renderGrainVolume(
           scene,
           bundle.position,
           bundle.data.type,
           bundle.dimensions,
-          fillPercentage
+          fillPercentage,
+          detail.levelMaps[0]
         );
       }
     } catch (err) {

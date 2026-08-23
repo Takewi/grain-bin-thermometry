@@ -16,10 +16,16 @@
       <span>&ge; 34°</span>
     </div>
 
-    <!-- Indicador de Sensor com Defeito -->
-    <div class="faulty-indicator">
-      <span class="faulty-dot"></span>
-      <span class="faulty-text">Defeito (&gt; 125°C / Aberto)</span>
+    <!-- Indicadores de Status -->
+    <div class="status-legend-group">
+      <div class="legend-status-item">
+        <span class="out-grain-dot"></span>
+        <span class="status-text">Fora do Grão (Ar)</span>
+      </div>
+      <div class="legend-status-item">
+        <span class="faulty-dot"></span>
+        <span class="status-text">Defeito (&gt; 125°C)</span>
+      </div>
     </div>
   </div>
 </template>
@@ -76,14 +82,29 @@
   margin-bottom: 8px;
 }
 
-.faulty-indicator {
+.status-legend-group {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 12px;
   border-top: 1px solid rgba(255, 255, 255, 0.08);
   padding-top: 6px;
   font-size: 0.7rem;
   color: #94a3b8;
+}
+
+.legend-status-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.out-grain-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #6b7280;
+  border: 1px solid #9ca3af;
+  display: inline-block;
 }
 
 .faulty-dot {
@@ -91,10 +112,11 @@
   height: 8px;
   border-radius: 50%;
   background: #717c91;
+  border: 1px solid #ef4444;
   display: inline-block;
 }
 
-.faulty-text {
+.status-text {
   font-family: "Inter", sans-serif;
 }
 </style>

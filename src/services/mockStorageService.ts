@@ -280,32 +280,37 @@ export function generateSiloDetail(summary: SiloSummary): StorageDetail {
   const numSensorsPerPendulum = isWarehouse ? 4 : 8;
   const isHotspotSilo = summary.id === 102;
 
-  // Função auxiliar para gerar leituras de sensores verticais
+  // Função auxiliar para gerar leituras de sensores verticais (índice 0 no topo até N-1 na base)
   const generateSensors = (
     baseTemp: number,
+    inGrainStartIndex: number = 2,
     hotspot: boolean = false,
     faultProne: boolean = false
   ): SensorReading[] => {
+    // Garante obrigatoriamente que no mínimo os 2 primeiros sensores do topo (índices 0 e 1) estejam fora da massa de grão
+    const effectiveStart = Math.max(2, inGrainStartIndex);
+
     return Array.from({ length: numSensorsPerPendulum }, (_, idx) => {
+      const inGrain = idx >= effectiveStart;
+
       // Simula sensor com defeito ocasional (> 125°C) no silo de teste
       if (faultProne && idx === 3) {
-        return { temperature: 138.5, level: "in_grain" };
+        return { temperature: 138.5, level: inGrain ? "in_grain" : "out_of_grain" };
       }
 
-      const verticalGradient = (idx / (numSensorsPerPendulum - 1)) * 3.5;
-      const noise = (Math.sin(idx * 1.5) + (Math.random() - 0.5)) * 1.2;
-      let temp = baseTemp + verticalGradient + noise;
+      // Sensores fora do grão medem o ar superior (mais frio e com oscilação ambiente)
+      // Sensores dentro da massa de grão acumulam calor e gradiente biológico
+      const verticalGradient = (idx / (numSensorsPerPendulum - 1)) * 2.8;
+      const noise = (Math.sin(idx * 1.5) + (Math.random() - 0.5)) * 0.8;
+      let temp = inGrain
+        ? baseTemp + verticalGradient + noise
+        : baseTemp - 3.5 + noise * 0.5;
 
-      if (hotspot && idx >= 2 && idx <= 5) {
+      if (hotspot && inGrain && idx >= 3 && idx <= 5) {
         temp += 8.5; // Ponto de aquecimento no meio da massa
       }
 
       temp = Math.max(14, Math.min(48, Number(temp.toFixed(1))));
-
-      // Define se o sensor está dentro ou fora da massa de grão baseado na ocupação
-      const fillRatio = summary.quantity / summary.capacity;
-      const sensorHeightRatio = idx / (numSensorsPerPendulum - 1);
-      const inGrain = sensorHeightRatio <= fillRatio;
 
       return {
         temperature: temp,
@@ -314,85 +319,89 @@ export function generateSiloDetail(summary: SiloSummary): StorageDetail {
     });
   };
 
-  // Pêndulo central (apenas presente em silos cilíndricos, ausente em armazéns graneleiros)
+  // Nível base relativo à ocupação
+  const fillRatio = summary.quantity / summary.capacity;
+  const baseStart = fillRatio > 0.75 ? 2 : fillRatio > 0.5 ? 3 : 4;
+
+  // Pêndulo central (pico do cone / montanha de grãos no silo)
   const centralPendulum = isWarehouse
     ? undefined
-    : generateSensors(summary.tempMed, isHotspotSilo, false);
+    : generateSensors(summary.tempMed, baseStart, isHotspotSilo, false);
 
   // Mapeamento dos anéis e setores
   let arcRings: ArcRingSector[] = [];
 
   if (isWarehouse) {
-    // Graneleiro: 4 setores transversais ao longo da profundidade
+    // Graneleiro: 4 setores transversais ao longo de Z, com cristas/ondas no centro e talude nas bordas
     arcRings = [
       {
-        sector: 1,
+        sector: 1, // Entrada frontal: rampa suave
         pendulums: [
-          generateSensors(summary.tempMin + 0.5),
-          generateSensors(summary.tempMed - 0.8),
-          generateSensors(summary.tempMed),
-          generateSensors(summary.tempMin + 1.2),
-          generateSensors(summary.tempMed),
-          generateSensors(summary.tempMed - 0.5),
+          generateSensors(summary.tempMin + 0.5, 3),
+          generateSensors(summary.tempMed - 0.8, 2),
+          generateSensors(summary.tempMed, 2),
+          generateSensors(summary.tempMin + 1.2, 2),
+          generateSensors(summary.tempMed, 2),
+          generateSensors(summary.tempMed - 0.5, 3),
         ],
       },
       {
-        sector: 2,
+        sector: 2, // Crista de descarga 1 (pico da montanha de grão)
         pendulums: [
-          generateSensors(summary.tempMed + 0.4),
-          generateSensors(summary.tempMax - 1.5),
-          generateSensors(summary.tempMed + 1.0),
-          generateSensors(summary.tempMed),
-          generateSensors(summary.tempMin + 0.9),
-          generateSensors(summary.tempMed),
+          generateSensors(summary.tempMed + 0.4, 3),
+          generateSensors(summary.tempMax - 1.5, 2),
+          generateSensors(summary.tempMed + 1.0, 2),
+          generateSensors(summary.tempMed, 2),
+          generateSensors(summary.tempMin + 0.9, 2),
+          generateSensors(summary.tempMed, 3),
         ],
       },
       {
-        sector: 3,
+        sector: 3, // Vale intermediário
         pendulums: [
-          generateSensors(summary.tempMed),
-          generateSensors(summary.tempMed - 1.0),
-          generateSensors(summary.tempMin + 1.5),
-          generateSensors(summary.tempMed + 0.2),
-          generateSensors(summary.tempMed - 0.4),
-          generateSensors(summary.tempMin + 0.8),
+          generateSensors(summary.tempMed, 3),
+          generateSensors(summary.tempMed - 1.0, 2),
+          generateSensors(summary.tempMin + 1.5, 2),
+          generateSensors(summary.tempMed + 0.2, 2),
+          generateSensors(summary.tempMed - 0.4, 2),
+          generateSensors(summary.tempMin + 0.8, 3),
         ],
       },
       {
-        sector: 4,
+        sector: 4, // Crista traseira
         pendulums: [
-          generateSensors(summary.tempMin + 0.3),
-          generateSensors(summary.tempMed + 0.5),
-          generateSensors(summary.tempMed),
-          generateSensors(summary.tempMin + 1.0),
-          generateSensors(summary.tempMed - 0.6),
-          generateSensors(summary.tempMin + 0.4),
+          generateSensors(summary.tempMin + 0.3, 3),
+          generateSensors(summary.tempMed + 0.5, 2),
+          generateSensors(summary.tempMed, 2),
+          generateSensors(summary.tempMin + 1.0, 2),
+          generateSensors(summary.tempMed - 0.6, 2),
+          generateSensors(summary.tempMin + 0.4, 3),
         ],
       },
     ];
   } else {
-    // Silo Cilíndrico: Anel interno (4 pêndulos) e Anel externo (8 pêndulos)
+    // Silo Cilíndrico: Cone natural (Centro = mais alto [baseStart], Anel Interno [baseStart ou +1], Anel Externo = mais baixo [+1 ou +2])
     arcRings = [
       {
         sector: 1, // Anel Interno (Raio ~45%)
         pendulums: [
-          generateSensors(summary.tempMed - 0.5, isHotspotSilo),
-          generateSensors(summary.tempMed + 0.2, false),
-          generateSensors(summary.tempMed + 0.8, isHotspotSilo, isHotspotSilo), // sensor com defeito aqui no Silo 102
-          generateSensors(summary.tempMed - 0.2, false),
+          generateSensors(summary.tempMed - 0.5, baseStart, isHotspotSilo),
+          generateSensors(summary.tempMed + 0.2, baseStart + 1, false),
+          generateSensors(summary.tempMed + 0.8, baseStart, isHotspotSilo, isHotspotSilo),
+          generateSensors(summary.tempMed - 0.2, baseStart + 1, false),
         ],
       },
       {
-        sector: 2, // Anel Externo (Raio ~80%)
+        sector: 2, // Anel Externo (Raio ~80% - talude descendo em direção à parede)
         pendulums: [
-          generateSensors(summary.tempMin + 0.5, false),
-          generateSensors(summary.tempMed - 0.4, false),
-          generateSensors(summary.tempMax - 1.2, isHotspotSilo),
-          generateSensors(summary.tempMax, isHotspotSilo),
-          generateSensors(summary.tempMed + 0.6, false),
-          generateSensors(summary.tempMed, false),
-          generateSensors(summary.tempMin + 1.1, false),
-          generateSensors(summary.tempMin + 0.3, false),
+          generateSensors(summary.tempMin + 0.5, baseStart + 1, false),
+          generateSensors(summary.tempMed - 0.4, baseStart + 1, false),
+          generateSensors(summary.tempMax - 1.2, baseStart + 2, isHotspotSilo),
+          generateSensors(summary.tempMax, baseStart + 2, isHotspotSilo),
+          generateSensors(summary.tempMed + 0.6, baseStart + 2, false),
+          generateSensors(summary.tempMed, baseStart + 1, false),
+          generateSensors(summary.tempMin + 1.1, baseStart + 1, false),
+          generateSensors(summary.tempMin + 0.3, baseStart + 2, false),
         ],
       },
     ];

@@ -2,7 +2,8 @@ export interface SensorColorInfo {
   rgb: [number, number, number];
   hex: string;
   isFaulty: boolean;
-  status: "faulty" | "cold" | "normal" | "warning" | "critical";
+  isOutOfGrain?: boolean;
+  status: "faulty" | "out_of_grain" | "cold" | "normal" | "warning" | "critical";
   statusLabel: string;
 }
 
@@ -18,13 +19,13 @@ function rgbToHex(r: number, g: number, b: number): string {
 }
 
 /**
- * Mapeia uma temperatura em graus Celsius para cor e diagnóstico visual
+ * Mapeia uma temperatura em graus Celsius e nível para cor e diagnóstico visual
  */
 export function getSensorVisualInfo(
   temp: number,
-  _level?: string
+  level?: string
 ): SensorColorInfo {
-  // Verificação de erro ou sensor desconectado (> 125°C ou < -40°C ou NaN)
+  // 1. Verificação de erro ou sensor desconectado (> 125°C ou < -40°C ou NaN)
   if (temp > 125 || temp < -40 || isNaN(temp)) {
     const rgb: [number, number, number] = [0.45, 0.48, 0.55];
     return {
@@ -33,6 +34,19 @@ export function getSensorVisualInfo(
       isFaulty: true,
       status: "faulty",
       statusLabel: "Sensor com Defeito (> 125°C)",
+    };
+  }
+
+  // 2. Sensores fora da massa de grão (bolsão de ar superior) -> Cinza Neutro (#6b7280)
+  if (level === "out_of_grain") {
+    const rgb: [number, number, number] = [0.42, 0.45, 0.50];
+    return {
+      rgb,
+      hex: rgbToHex(...rgb),
+      isFaulty: false,
+      isOutOfGrain: true,
+      status: "out_of_grain",
+      statusLabel: "Fora do Grão (Espaço de Ar)",
     };
   }
 
@@ -94,4 +108,36 @@ export function getSensorVisualInfo(
     status: "critical",
     statusLabel: "Crítico / Foco de Calor",
   };
+}
+
+/**
+ * Converte uma temperatura contínua em RGB normalizado [0..1] para o Heatmap 3D
+ */
+export function temperatureToRGB(temp: number): [number, number, number] {
+  if (temp <= 18) {
+    return [0.12, 0.45, 0.95]; // Azul
+  }
+  if (temp <= 26) {
+    const t = (temp - 18) / 8;
+    return [
+      0.12 * (1 - t) + 0.15 * t,
+      0.45 * (1 - t) + 0.85 * t,
+      0.95 * (1 - t) + 0.35 * t,
+    ];
+  }
+  if (temp <= 34) {
+    const t = (temp - 26) / 8;
+    return [
+      0.15 * (1 - t) + 0.95 * t,
+      0.85 * (1 - t) + 0.75 * t,
+      0.35 * (1 - t) + 0.10 * t,
+    ];
+  }
+  // Crítico > 34°C
+  const t = Math.min((temp - 34) / 10, 1);
+  return [
+    0.95 * (1 - t) + 0.98 * t,
+    0.75 * (1 - t) + 0.15 * t,
+    0.10 * (1 - t) + 0.12 * t,
+  ];
 }
