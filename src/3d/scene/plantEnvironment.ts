@@ -28,6 +28,13 @@ export function setupPlantEnvironment(scene: Scene): EnvironmentBundle {
   scene.clearColor = new Color3(...CLEAR_COLOR_RGB).toColor4(1.0);
   scene.ambientColor = new Color3(0.55, 0.58, 0.65);
 
+  // Configuração de Rendering Groups para sobreposição absoluta da termometria:
+  // Grupo 0: Estruturas 3D (Silos, Armazéns, Piso, Relevo do Grão)
+  // Grupo 1: Cabos e Guias de Anéis de Termometria (desenhados sobre o grupo 0)
+  // Grupo 2: Badges e Pílulas de Sensores (sempre visíveis no topo absoluto da cena)
+  scene.setRenderingAutoClearDepthStencil(1, true, false, false);
+  scene.setRenderingAutoClearDepthStencil(2, false, false, false);
+
   // 1. Iluminação Hemisférica Principal (Topo -> Base)
   const hemiMain = new HemisphericLight(
     "hemiMain",

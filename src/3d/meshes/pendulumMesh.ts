@@ -322,6 +322,7 @@ export function renderThermometry(
   );
   ringGuidesMesh.color = new Color3(...RINGS.GUIDE_COLOR_RGB);
   ringGuidesMesh.parent = root;
+  ringGuidesMesh.renderingGroupId = 1;
   ringGuidesMesh.isPickable = false;
   disposableObjects.push(ringGuidesMesh);
 
@@ -340,6 +341,7 @@ export function renderThermometry(
   templatePlane.isVisible = false;
   templatePlane.isPickable = false;
   templatePlane.parent = root;
+  templatePlane.renderingGroupId = 2;
   disposableObjects.push(templatePlane);
 
   parsedPendulums.forEach((p) => {
@@ -390,6 +392,7 @@ export function renderThermometry(
       badgePlane.position = new Vector3(p.localX, y, p.localZ);
       badgePlane.material = badgeMat;
       badgePlane.parent = root;
+      badgePlane.renderingGroupId = 2;
       badgePlane.billboardMode = Mesh.BILLBOARDMODE_ALL;
       badgePlane.isPickable = true;
 
@@ -426,6 +429,7 @@ export function renderThermometry(
   );
   cables.color = new Color3(...CABLE.COLOR_RGB);
   cables.parent = root;
+  cables.renderingGroupId = 1;
   cables.isPickable = false;
   disposableObjects.push(cables);
 

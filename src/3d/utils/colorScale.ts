@@ -50,7 +50,7 @@ export function getSensorVisualInfo(
     };
   }
 
-  // Frio (<= 18°C)
+  // Frio (<= 18°C): Azul
   if (temp <= 18) {
     const rgb: [number, number, number] = [0.12, 0.45, 0.95];
     return {
@@ -62,43 +62,75 @@ export function getSensorVisualInfo(
     };
   }
 
-  // Ideal / Normal (18°C - 26°C): Azul -> Verde Esmeralda
-  if (temp <= 26) {
-    const t = (temp - 18) / 8;
-    const r = 0.12 * (1 - t) + 0.15 * t;
-    const g = 0.45 * (1 - t) + 0.85 * t;
-    const b = 0.95 * (1 - t) + 0.35 * t;
+  // Faixa Fria/Ideal (18°C - 22°C): Azul -> Verde
+  if (temp <= 22) {
+    const t = (temp - 18) / 4;
+    const r = 0.12 * (1 - t) + 0.10 * t;
+    const g = 0.45 * (1 - t) + 0.75 * t;
+    const b = 0.95 * (1 - t) + 0.45 * t;
     const rgb: [number, number, number] = [r, g, b];
     return {
       rgb,
       hex: rgbToHex(...rgb),
       isFaulty: false,
       status: "normal",
-      statusLabel: "Temperatura Ideal",
+      statusLabel: "Temperatura Fria/Ideal",
     };
   }
 
-  // Alerta Moderado (26°C - 34°C): Verde -> Amarelo / Âmbar
-  if (temp <= 34) {
-    const t = (temp - 26) / 8;
-    const r = 0.15 * (1 - t) + 0.95 * t;
-    const g = 0.85 * (1 - t) + 0.75 * t;
-    const b = 0.35 * (1 - t) + 0.10 * t;
+  // Faixa Normal/Transição (22°C - 26°C): Verde -> Amarelo
+  if (temp <= 26) {
+    const t = (temp - 22) / 4;
+    const r = 0.10 * (1 - t) + 0.95 * t;
+    const g = 0.75 * (1 - t) + 0.82 * t;
+    const b = 0.45 * (1 - t) + 0.10 * t;
+    const rgb: [number, number, number] = [r, g, b];
+    return {
+      rgb,
+      hex: rgbToHex(...rgb),
+      isFaulty: false,
+      status: "normal",
+      statusLabel: "Temperatura Normal",
+    };
+  }
+
+  // Faixa de Atenção / Aquecimento Inicial (26°C - 30°C): Amarelo -> Laranja
+  if (temp <= 30) {
+    const t = (temp - 26) / 4;
+    const r = 0.95 * (1 - t) + 0.96 * t;
+    const g = 0.82 * (1 - t) + 0.48 * t;
+    const b = 0.10 * (1 - t) + 0.10 * t;
     const rgb: [number, number, number] = [r, g, b];
     return {
       rgb,
       hex: rgbToHex(...rgb),
       isFaulty: false,
       status: "warning",
-      statusLabel: "Atenção / Aquecimento",
+      statusLabel: "Atenção / Início de Aquecimento",
     };
   }
 
-  // Crítico / Ponto de Calor (> 34°C): Âmbar -> Vermelho Intenso
-  const t = Math.min((temp - 34) / 10, 1);
-  const r = 0.95 * (1 - t) + 0.98 * t;
-  const g = 0.75 * (1 - t) + 0.15 * t;
-  const b = 0.10 * (1 - t) + 0.12 * t;
+  // Faixa de Alerta Elevado (30°C - 34°C): Laranja -> Vermelho
+  if (temp <= 34) {
+    const t = (temp - 30) / 4;
+    const r = 0.96 * (1 - t) + 0.96 * t;
+    const g = 0.48 * (1 - t) + 0.18 * t;
+    const b = 0.10 * (1 - t) + 0.12 * t;
+    const rgb: [number, number, number] = [r, g, b];
+    return {
+      rgb,
+      hex: rgbToHex(...rgb),
+      isFaulty: false,
+      status: "warning",
+      statusLabel: "Alerta / Aquecimento Acelerado",
+    };
+  }
+
+  // Crítico / Ponto de Calor (> 34°C): Vermelho Intenso
+  const t = Math.min((temp - 34) / 8, 1);
+  const r = 0.96 * (1 - t) + 0.98 * t;
+  const g = 0.18 * (1 - t) + 0.10 * t;
+  const b = 0.12 * (1 - t) + 0.10 * t;
   const rgb: [number, number, number] = [r, g, b];
 
   return {
@@ -117,27 +149,43 @@ export function temperatureToRGB(temp: number): [number, number, number] {
   if (temp <= 18) {
     return [0.12, 0.45, 0.95]; // Azul
   }
-  if (temp <= 26) {
-    const t = (temp - 18) / 8;
+  if (temp <= 22) {
+    const t = (temp - 18) / 4;
     return [
-      0.12 * (1 - t) + 0.15 * t,
-      0.45 * (1 - t) + 0.85 * t,
-      0.95 * (1 - t) + 0.35 * t,
+      0.12 * (1 - t) + 0.10 * t,
+      0.45 * (1 - t) + 0.75 * t,
+      0.95 * (1 - t) + 0.45 * t,
+    ];
+  }
+  if (temp <= 26) {
+    const t = (temp - 22) / 4;
+    return [
+      0.10 * (1 - t) + 0.95 * t,
+      0.75 * (1 - t) + 0.82 * t,
+      0.45 * (1 - t) + 0.10 * t,
+    ];
+  }
+  if (temp <= 30) {
+    const t = (temp - 26) / 4;
+    return [
+      0.95 * (1 - t) + 0.96 * t,
+      0.82 * (1 - t) + 0.48 * t,
+      0.10 * (1 - t) + 0.10 * t,
     ];
   }
   if (temp <= 34) {
-    const t = (temp - 26) / 8;
+    const t = (temp - 30) / 4;
     return [
-      0.15 * (1 - t) + 0.95 * t,
-      0.85 * (1 - t) + 0.75 * t,
-      0.35 * (1 - t) + 0.10 * t,
+      0.96 * (1 - t) + 0.96 * t,
+      0.48 * (1 - t) + 0.18 * t,
+      0.10 * (1 - t) + 0.12 * t,
     ];
   }
   // Crítico > 34°C
-  const t = Math.min((temp - 34) / 10, 1);
+  const t = Math.min((temp - 34) / 8, 1);
   return [
-    0.95 * (1 - t) + 0.98 * t,
-    0.75 * (1 - t) + 0.15 * t,
-    0.10 * (1 - t) + 0.12 * t,
+    0.96 * (1 - t) + 0.98 * t,
+    0.18 * (1 - t) + 0.10 * t,
+    0.12 * (1 - t) + 0.10 * t,
   ];
 }

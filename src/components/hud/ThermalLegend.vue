@@ -65,12 +65,13 @@
   background: linear-gradient(
     to right,
     #1e70f5 0%,
-    #26d07c 35%,
-    #f2bd1d 70%,
-    #f83b3b 100%
+    #10b981 25%,
+    #eab308 50%,
+    #f97316 75%,
+    #ef4444 100%
   );
   margin-bottom: 4px;
-  box-shadow: 0 0 10px rgba(38, 208, 124, 0.2);
+  box-shadow: 0 0 10px rgba(234, 179, 8, 0.25);
 }
 
 .legend-scale-labels {
