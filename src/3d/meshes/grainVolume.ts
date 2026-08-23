@@ -46,13 +46,14 @@ export function applyGrainVolumeMode(
   if (!mat) return;
 
   if (mode === "heatmap") {
-    // Modo Heatmap: Ativa o mapa de calor por vértice com autoiluminação
+    // Modo Heatmap: Ativa o mapa de calor por vértice com autoiluminação equilibrada
     grainMesh.useVertexColors = true;
     grainMesh.hasVertexAlpha = true;
-    mat.diffuseColor = new Color3(1.0, 1.0, 1.0);
-    mat.specularColor = new Color3(0.12, 0.12, 0.12);
-    mat.emissiveColor = new Color3(0.26, 0.26, 0.26);
+    mat.diffuseColor = new Color3(0.65, 0.65, 0.65);
+    mat.specularColor = new Color3(0, 0, 0);
+    mat.emissiveColor = new Color3(0.55, 0.55, 0.55); // Brilho térmico balanceado sem esbranquiçar
     mat.alpha = 1.0;
+    mat.backFaceCulling = false;
     mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
   } else {
     // Modo Nível: Desativa totalmente as cores de vértice para ser 100% da MESMA cor uniforme (cor da temp média)
@@ -62,8 +63,9 @@ export function applyGrainVolumeMode(
     const [r, g, b] = temperatureToRGB(temp);
     mat.diffuseColor = new Color3(r, g, b);
     mat.specularColor = new Color3(0.12, 0.12, 0.12);
-    mat.emissiveColor = new Color3(r * 0.35, g * 0.35, b * 0.35);
+    mat.emissiveColor = new Color3(r * 0.45, g * 0.45, b * 0.45);
     mat.alpha = 0.44;
+    mat.backFaceCulling = false;
     mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
   }
 }
@@ -140,8 +142,8 @@ export function renderGrainVolume(
 
     // Geração da malha radial com cone superior de alta densidade
     const NS = 48; // Fatias angulares em 360°
-    const NR = 8;  // Anéis concêntricos
-    const NH = 6;  // Fatias verticais na parede lateral
+    const NR = 8;  // Anéis concêntricos no topo
+    const NH = 6;  // Fatias verticais nas paredes
 
     // Vértice central do topo (pico da montanha): index 0
     positions.push(0, centerTopY, 0);
@@ -176,7 +178,7 @@ export function renderGrainVolume(
       indices.push(0, 1 + s, 1 + next);
     }
 
-    // Triângulos entre anéis concêntricos
+    // Triângulos entre anéis concêntricos no topo
     for (let r = 1; r < NR; r++) {
       const offsetA = 1 + (r - 1) * NS;
       const offsetB = 1 + r * NS;
@@ -191,42 +193,57 @@ export function renderGrainVolume(
       }
     }
 
-    // Parede lateral cilíndrica com camadas verticais (para gradiente vertical perfeito)
-    let previousLayerOffset = 1 + (NR - 1) * NS;
-
-    for (let h = 1; h <= NH; h++) {
-      const t = h / NH;
-      const layerY = wallTopY + (baseY - wallTopY) * t;
-      const currentLayerOffset = positions.length / 3;
-
+    // Função auxiliar para construir paredes cilíndricas verticais completas (internas nos anéis e externa na parede)
+    const addCylindricalWall = (radius: number, topY: number) => {
+      let prevOffset = positions.length / 3;
       for (let s = 0; s < NS; s++) {
         const theta = (s / NS) * Math.PI * 2;
-        positions.push(rMesh * Math.cos(theta), layerY, rMesh * Math.sin(theta));
+        positions.push(radius * Math.cos(theta), topY, radius * Math.sin(theta));
       }
 
-      for (let s = 0; s < NS; s++) {
-        const next = (s + 1) % NS;
-        const t1 = previousLayerOffset + s;
-        const t2 = previousLayerOffset + next;
-        const b1 = currentLayerOffset + s;
-        const b2 = currentLayerOffset + next;
-        indices.push(t1, b1, t2);
-        indices.push(t2, b1, b2);
+      for (let h = 1; h <= NH; h++) {
+        const t = h / NH;
+        const layerY = topY + (baseY - topY) * t;
+        const currOffset = positions.length / 3;
+
+        for (let s = 0; s < NS; s++) {
+          const theta = (s / NS) * Math.PI * 2;
+          positions.push(radius * Math.cos(theta), layerY, radius * Math.sin(theta));
+        }
+
+        for (let s = 0; s < NS; s++) {
+          const next = (s + 1) % NS;
+          const t1 = prevOffset + s;
+          const t2 = prevOffset + next;
+          const b1 = currOffset + s;
+          const b2 = currOffset + next;
+          indices.push(t1, b1, t2);
+          indices.push(t2, b1, b2);
+        }
+        prevOffset = currOffset;
       }
+      return prevOffset;
+    };
 
-      previousLayerOffset = currentLayerOffset;
-    }
+    // 1. Parede Interna do Anel 1 (raio interno ~45% - alinhada aos sensores internos)
+    addCylindricalWall(dimensions.radius * 0.45, innerRingTopY);
 
-    // Fundo plano na base
+    // 2. Parede Interna do Anel 2 (raio externo ~80% - alinhada aos sensores do anel 2)
+    addCylindricalWall(dimensions.radius * 0.80, outerRingTopY);
+
+    // 3. Parede Externa Perimetral do Silo (raio 96%)
+    const outerWallBaseOffset = addCylindricalWall(rMesh, wallTopY);
+
+    // 4. Fundo plano na base
     const idxBottomCenter = positions.length / 3;
     positions.push(0, baseY, 0);
     for (let s = 0; s < NS; s++) {
       const next = (s + 1) % NS;
-      indices.push(idxBottomCenter, previousLayerOffset + next, previousLayerOffset + s);
+      indices.push(idxBottomCenter, outerWallBaseOffset + next, outerWallBaseOffset + s);
     }
   } else {
     // ==========================================
-    // ARMAZÉM GRANELEIRO: TOPO EM CRISTA LONGITUDINAL + ONDAS DE DESCARGA
+    // ARMAZÉM GRANELEIRO: TOPO EM CRISTA LONGITUDINAL + PAREDES INTERNAS VOLUMÉTRICAS
     // ==========================================
     const halfW = dimensions.width * 0.44;
     const halfD = dimensions.depth * 0.44;
@@ -289,7 +306,7 @@ export function renderGrainVolume(
       }
     }
 
-    // Paredes verticais do armazém (4 faces)
+    // Função auxiliar para construir parede vertical em plano
     const addQuadWall = (
       x1: number, y1: number, z1: number,
       x2: number, y2: number, z2: number
@@ -312,6 +329,44 @@ export function renderGrainVolume(
       }
     };
 
+    // 1. Paredes Internas Transversais (Fatias exatas nos setores de pêndulos Z)
+    if (arcRings.length > 0) {
+      const totalSectors = arcRings.length;
+      const usableDepth = dimensions.depth * 0.78;
+      const zStep = totalSectors > 1 ? usableDepth / (totalSectors - 1) : 0;
+
+      arcRings.forEach((_, secIdx) => {
+        const secZ = totalSectors > 1 ? -usableDepth / 2 + secIdx * zStep : 0;
+        const v = (secZ + halfD) / (2 * halfD);
+        const secNorm = Math.max(0, Math.min(2.99, v * 3));
+        const secFloor = Math.floor(secNorm);
+        const secFrac = secNorm - secFloor;
+        const h0 = sectorHeights[secFloor] || sectorHeights[0];
+        const h1 = sectorHeights[secFloor + 1] || h0;
+        const ridgeY = h0 + (h1 - h0) * secFrac;
+
+        for (let ix = 0; ix < NX; ix++) {
+          const u1 = ix / NX;
+          const u2 = (ix + 1) / NX;
+          const x1 = -halfW + u1 * (2 * halfW);
+          const x2 = -halfW + u2 * (2 * halfW);
+
+          const distFromCenter1 = Math.abs((ix - NX / 2) / (NX / 2));
+          const archProfile1 = Math.max(0, 1 - Math.pow(distFromCenter1, 1.8));
+          const edgeY1 = Math.max(baseY + 0.3, ridgeY * 0.35);
+          const y1 = edgeY1 + (ridgeY - edgeY1) * archProfile1;
+
+          const distFromCenter2 = Math.abs((ix + 1 - NX / 2) / (NX / 2));
+          const archProfile2 = Math.max(0, 1 - Math.pow(distFromCenter2, 1.8));
+          const edgeY2 = Math.max(baseY + 0.3, ridgeY * 0.35);
+          const y2 = edgeY2 + (ridgeY - edgeY2) * archProfile2;
+
+          addQuadWall(x1, y1, secZ, x2, y2, secZ);
+        }
+      });
+    }
+
+    // 2. Paredes Externas do Armazém (4 faces perimetrais)
     // Parede Frontal (Z = -halfD)
     for (let ix = 0; ix < NX; ix++) {
       const idxA = ix;
@@ -350,7 +405,7 @@ export function renderGrainVolume(
       );
     }
 
-    // Fundo plano na base
+    // 4. Fundo plano na base
     const b0 = positions.length / 3;
     positions.push(-halfW, baseY, -halfD);
     positions.push(halfW, baseY, -halfD);
@@ -433,22 +488,20 @@ export function renderGrainVolume(
     } else {
       // Armazém Graneleiro
       const arcRings = levelMap.arcRings || [];
-      const numSectors = arcRings.length;
-      arcRings.forEach((sector, secIdx) => {
-        const z =
-          numSectors > 1
-            ? -dimensions.depth * 0.375 +
-              (secIdx / (numSectors - 1)) * (dimensions.depth * 0.75)
-            : 0;
+      const totalSectors = arcRings.length;
+      const usableDepth = dimensions.depth * 0.78;
+      const zStep = totalSectors > 1 ? usableDepth / (totalSectors - 1) : 0;
 
+      arcRings.forEach((sector, secIdx) => {
+        const secZ = totalSectors > 1 ? -usableDepth / 2 + secIdx * zStep : 0;
         const pList = sector.pendulums;
-        const numP = pList.length;
+        const count = pList.length;
+        const usableWidth = dimensions.width * 0.72;
+        const xStep = count > 1 ? usableWidth / (count - 1) : 0;
+
         pList.forEach((p, pIdx) => {
-          const x =
-            numP > 1
-              ? -dimensions.width * 0.40 +
-                (pIdx / (numP - 1)) * (dimensions.width * 0.80)
-              : 0;
+          const x = count > 1 ? -usableWidth / 2 + pIdx * xStep : 0;
+          const z = secZ;
 
           const u = x / (dimensions.width * 0.5);
           const archFactor = Math.max(0, 1 - u * u);
@@ -499,9 +552,9 @@ export function renderGrainVolume(
     const vertTemp = sumWeight > 0 ? sumTemp / sumWeight : 23.0;
     const [r, g, b] = temperatureToRGB(vertTemp);
 
-    // Alpha adaptativo: áreas quentes têm levemente maior opacidade e brilho
+    // Alpha adaptativo: áreas quentes têm levemente maior opacidade e brilho mantendo saturação
     const tempRatio = Math.max(0, Math.min(1, (vertTemp - 18) / 16));
-    const vertAlpha = 0.44 + tempRatio * 0.20;
+    const vertAlpha = 0.36 + tempRatio * 0.16;
 
     colors.push(r, g, b, vertAlpha);
   }
@@ -524,7 +577,7 @@ export function renderGrainVolume(
   mat.backFaceCulling = false;
   grainMesh.material = mat;
 
-  applyGrainVolumeMode(grainMesh, mode);
+  applyGrainVolumeMode(grainMesh, mode, avgTemp);
 
   return grainMesh;
 }
