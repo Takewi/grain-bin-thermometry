@@ -1,0 +1,35 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Dependências
+node_modules
+dist
+dist-ssr
+*.local
+
+# TypeScript
+*.tsbuildinfo
+
+# Ambiente e Chaves
+.env
+.env.*
+!.env.example
+
+# IDEs e Editores
+.idea
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+Thumbs.db
+
+# Brainstorm
+.brainstorm

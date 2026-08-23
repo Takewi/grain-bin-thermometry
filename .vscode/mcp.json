@@ -1,0 +1,39 @@
+{
+  "servers": {
+    "babylonjs-node-material": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@babylonjs/mcp-servers", "nme"]
+    },
+    "babylonjs-node-geometry": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@babylonjs/mcp-servers", "nge"]
+    },
+    "babylonjs-gui": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@babylonjs/mcp-servers", "gui"]
+    },
+    "babylonjs-node-render-graph": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@babylonjs/mcp-servers", "nrge"]
+    },
+    "babylonjs-node-particle": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@babylonjs/mcp-servers", "npe"]
+    },
+    "babylonjs-flow-graph": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@babylonjs/mcp-servers", "flow-graph"]
+    },
+    "babylonjs-smart-filters": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "@babylonjs/mcp-servers", "smart-filters"]
+    }
+  }
+}
