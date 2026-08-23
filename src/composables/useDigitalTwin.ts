@@ -11,6 +11,7 @@ import { calculatePlantLayout } from "@/3d/utils/layoutEngine";
 import { buildStorageStructure, type StorageMeshBundle } from "@/3d/meshes/storageStructure";
 import {
   renderThermometry,
+  clearSensorBadgeCache,
   type PendulumVisualizerInstance,
   type SensorInstanceMetadata,
 } from "@/3d/meshes/pendulumMesh";
@@ -202,16 +203,16 @@ export function useDigitalTwin() {
     const { SHELL } = MATERIAL_CONFIG;
     storageBundles.forEach((b) => {
       const isCurrent = b.data.id === bundle.data.id;
+      const targetAlpha = isCurrent ? SHELL.OPACITY_FOCUSED : 1.0;
+      const targetMode = isCurrent
+        ? StandardMaterial.MATERIAL_ALPHABLEND
+        : StandardMaterial.MATERIAL_OPAQUE;
+
       b.shellMeshes.forEach((mesh) => {
         const mat = mesh.material as StandardMaterial;
-        if (mat) {
-          if (isCurrent) {
-            mat.alpha = SHELL.OPACITY_FOCUSED;
-            mat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
-          } else {
-            mat.alpha = 1.0;
-            mat.transparencyMode = StandardMaterial.MATERIAL_OPAQUE;
-          }
+        if (mat && mat.alpha !== targetAlpha) {
+          mat.alpha = targetAlpha;
+          mat.transparencyMode = targetMode;
         }
       });
     });
@@ -318,6 +319,7 @@ export function useDigitalTwin() {
 
   onBeforeUnmount(() => {
     window.removeEventListener("resize", handleResize);
+    clearSensorBadgeCache();
     currentThermo?.dispose();
     currentGrainMesh?.dispose();
     scene?.dispose();

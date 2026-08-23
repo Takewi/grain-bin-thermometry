@@ -40,21 +40,38 @@ interface ParsedPendulum {
   sensors: SensorReading[];
 }
 
+// Cache global de materiais e texturas dos badges de temperatura para renderização com latência zero
+const badgeMaterialCache = new Map<string, StandardMaterial>();
+
+export function clearSensorBadgeCache(): void {
+  badgeMaterialCache.forEach((mat) => {
+    mat.diffuseTexture?.dispose();
+    mat.dispose();
+  });
+  badgeMaterialCache.clear();
+}
+
 /**
- * Cria a textura dinâmica da pílula/badge do sensor com a temperatura escrita
+ * Obtém ou cria material e textura dinâmica de sensor com memoização global de alta performance
  */
-function createSensorBadgeTexture(
+function getOrCreateBadgeMaterial(
   scene: Scene,
   temp: number,
   isFaulty: boolean,
   colorHex: string
-): DynamicTexture {
+): StandardMaterial {
+  const cacheKey = `${isFaulty ? "ERR" : temp.toFixed(1)}_${colorHex}`;
+  const existing = badgeMaterialCache.get(cacheKey);
+  if (existing) {
+    return existing;
+  }
+
   const { BADGE } = THERMOMETRY_CONFIG;
   const width = BADGE.CANVAS_WIDTH;
   const height = BADGE.CANVAS_HEIGHT;
 
   const texture = new DynamicTexture(
-    `badge_tex_${temp}_${Math.random()}`,
+    `badge_tex_${cacheKey}`,
     { width, height },
     scene,
     false
@@ -103,7 +120,18 @@ function createSensorBadgeTexture(
   ctx.fillText(displayText, width / 2 + 18, height / 2 + 2);
 
   texture.update();
-  return texture;
+
+  const mat = new StandardMaterial(`badge_mat_${cacheKey}`, scene);
+  mat.diffuseTexture = texture;
+  mat.emissiveTexture = texture;
+  mat.opacityTexture = texture;
+  mat.useAlphaFromDiffuseTexture = true;
+  mat.disableLighting = true;
+  mat.backFaceCulling = false;
+  mat.freeze(); // Congela material para eliminar overhead de uniformes por frame
+
+  badgeMaterialCache.set(cacheKey, mat);
+  return mat;
 }
 
 export function renderThermometry(
@@ -303,6 +331,17 @@ export function renderThermometry(
   const cableLines: Vector3[][] = [];
   let globalSensorIndex = 0;
 
+  // Template base reutilizado por clonagem de geometria (zero overhead de alocação de buffers)
+  const templatePlane = MeshBuilder.CreatePlane(
+    `sensor_template_${detail.id}`,
+    { width: BADGE.WIDTH, height: BADGE.HEIGHT },
+    scene
+  );
+  templatePlane.isVisible = false;
+  templatePlane.isPickable = false;
+  templatePlane.parent = root;
+  disposableObjects.push(templatePlane);
+
   parsedPendulums.forEach((p) => {
     // Para armazéns graneleiros, ajusta a altura do cabo e dos sensores seguindo a curvatura do arco
     const isWh = type === "WAREHOUSE";
@@ -337,31 +376,17 @@ export function renderThermometry(
 
       const visualInfo = getSensorVisualInfo(sensor.temperature, sensor.level);
 
-      // 1. Textura dinâmica da pílula
-      const badgeTexture = createSensorBadgeTexture(
+      // 1. Material e textura obtidos instantaneamente via cache
+      const badgeMat = getOrCreateBadgeMaterial(
         scene,
         sensor.temperature,
         visualInfo.isFaulty,
         visualInfo.hex
       );
-      disposableObjects.push(badgeTexture);
 
-      // 2. Material auto-iluminado
-      const badgeMat = new StandardMaterial(`badge_mat_${globalSensorIndex}`, scene);
-      badgeMat.diffuseTexture = badgeTexture;
-      badgeMat.emissiveTexture = badgeTexture;
-      badgeMat.opacityTexture = badgeTexture;
-      badgeMat.useAlphaFromDiffuseTexture = true;
-      badgeMat.disableLighting = true;
-      badgeMat.backFaceCulling = false;
-      disposableObjects.push(badgeMat);
-
-      // 3. Plano Billboard (sempre voltado para a câmera)
-      const badgePlane = MeshBuilder.CreatePlane(
-        `sensor_badge_${globalSensorIndex}`,
-        { width: BADGE.WIDTH, height: BADGE.HEIGHT },
-        scene
-      );
+      // 2. Plano Billboard clonado a partir do template com custo zero
+      const badgePlane = templatePlane.clone(`sensor_badge_${globalSensorIndex}`);
+      badgePlane.isVisible = true;
       badgePlane.position = new Vector3(p.localX, y, p.localZ);
       badgePlane.material = badgeMat;
       badgePlane.parent = root;
