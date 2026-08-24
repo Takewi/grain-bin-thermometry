@@ -72,7 +72,7 @@ vec3 getThermalColor(float temp) {
     }
 }
 
-// Amostragem IDW contínua de temperatura em qualquer ponto do espaço 3D
+// Amostragem IDW contínua de temperatura em qualquer ponto do espaço 3D (Otimizada para GPU)
 float sampleTemperature(vec3 pLocal) {
     if (uSensorCount == 0) return 23.0;
 
@@ -84,8 +84,12 @@ float sampleTemperature(vec3 pLocal) {
         vec4 s = uSensors[i];
         vec3 diff = pLocal - s.xyz;
         float d2 = dot(diff, diff);
-        // IDW com decaimento suave
-        float w = 1.0 / (pow(d2, 1.25) + 0.35);
+        
+        // Culling de distância: sensores distantes (> 10m) têm peso irrelevante
+        if (d2 > 100.0) continue;
+
+        // IDW ultrarrápido sem potenciação lenta (GPU faz em 1 ciclo com sqrt)
+        float w = 1.0 / (d2 * sqrt(d2) + 0.35);
         sumWeight += w;
         sumTemp += s.w * w;
     }
@@ -120,12 +124,12 @@ void main() {
     float initAlpha = 0.28 + surfaceNorm * 0.12;
     vec4 accumColor = vec4(surfaceCol * (0.80 + surfaceNorm * 0.40) * initAlpha, initAlpha);
 
-    // 2. Raymarching pelo interior da massa
+    // 2. Raymarching pelo interior da massa (16 passos otimizados de alta performance)
     float marchDistance = max(uDimensions.x, uDimensions.z) * 2.05;
-    int STEPS = 28;
-    float stepSize = marchDistance / float(STEPS);
+    int STEPS = 16;
+    float stepSize = marchDistance / 16.0;
 
-    for (int i = 1; i <= 28; i++) {
+    for (int i = 1; i <= 16; i++) {
         vec3 sampleLocal = vLocalPosition + rayDir * (float(i) * stepSize);
 
         if (isInsideVolume(sampleLocal)) {
@@ -133,14 +137,14 @@ void main() {
             vec3 col = getThermalColor(temp);
 
             float tempNorm = clamp((temp - 18.0) / 16.0, 0.0, 1.0);
-            float stepAlpha = 0.032 + tempNorm * 0.042;
+            float stepAlpha = 0.052 + tempNorm * 0.062;
             vec3 emission = col * (0.80 + tempNorm * 0.60);
 
             float transmittance = 1.0 - accumColor.a;
             accumColor.rgb += emission * stepAlpha * transmittance;
             accumColor.a += stepAlpha * transmittance;
 
-            if (accumColor.a >= 0.94) {
+            if (accumColor.a >= 0.90) {
                 break;
             }
         }
