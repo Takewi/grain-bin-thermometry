@@ -79,7 +79,7 @@ export function renderGrainVolume(
   dimensions: { width: number; height: number; depth: number; radius: number },
   fillPercentage: number,
   levelMap?: LevelMap,
-  mode: GrainVisualMode = "heatmap",
+  mode: GrainVisualMode = "level",
   avgTemp: number = 23
 ): Mesh {
   const { GRAIN } = MATERIAL_CONFIG;

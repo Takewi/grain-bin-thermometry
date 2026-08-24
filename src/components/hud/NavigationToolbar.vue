@@ -70,7 +70,7 @@ defineEmits<{
       <div class="nav-group mode-toggle-group">
         <button
           class="nav-btn"
-          :class="{ active: (visualMode || 'heatmap') === 'level' }"
+          :class="{ active: (visualMode || 'level') === 'level' }"
           @click="$emit('set-visual-mode', 'level')"
           title="Modo Nível: Exibe a massa de grãos com relevo na cor natural"
         >
@@ -80,7 +80,7 @@ defineEmits<{
 
         <button
           class="nav-btn"
-          :class="{ active: (visualMode || 'heatmap') === 'heatmap' }"
+          :class="{ active: (visualMode || 'level') === 'heatmap' }"
           @click="$emit('set-visual-mode', 'heatmap')"
           title="Modo Heatmap: Exibe o mapa de calor térmico volumétrico 3D"
         >

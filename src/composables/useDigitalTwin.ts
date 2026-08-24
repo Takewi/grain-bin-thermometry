@@ -37,7 +37,7 @@ export function useDigitalTwin() {
   const isLoadingDetail = ref(false);
   const isAutoRotating = ref(false);
   const currentCameraPreset = ref<CameraPresetType>("iso");
-  const visualMode = ref<GrainVisualMode>("heatmap");
+  const visualMode = ref<GrainVisualMode>("level");
   const silosList = ref<SiloSummary[]>([]);
   const selectedStorage = ref<SiloSummary | null>(null);
   const selectedDetail = ref<StorageDetail | null>(null);
