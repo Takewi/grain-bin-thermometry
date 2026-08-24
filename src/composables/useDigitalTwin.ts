@@ -107,26 +107,6 @@ export function useDigitalTwin() {
           if (isAutoRotating.value && pointerInfo.event.button === 0) {
             setAutoRotate(false);
           }
-
-          // EXCLUSIVO BOTÃO ESQUERDO (button === 0): Botão direito/meio não seleciona storage
-          if (pointerInfo.event.button === 0) {
-            const pick = pointerInfo.pickInfo;
-            if (pick?.hit && pick.pickedMesh) {
-              let targetMesh: Mesh | null = pick.pickedMesh as Mesh;
-              while (targetMesh && !targetMesh.metadata?.data) {
-                targetMesh = targetMesh.parent as Mesh | null;
-              }
-
-              if (targetMesh && targetMesh.metadata?.data) {
-                const bundle = storageBundles.find(
-                  (b) => b.data.id === targetMesh!.metadata.data.id
-                );
-                if (bundle) {
-                  selectStorage(bundle);
-                }
-              }
-            }
-          }
           break;
         }
 
@@ -135,11 +115,26 @@ export function useDigitalTwin() {
           break;
         }
 
-        // Duplo Clique: Centralização inteligente da câmera
+        // Duplo Clique: Seleção de Silo/Graneleiro ou Centralização inteligente da câmera
         case PointerEventTypes.POINTERDOUBLETAP: {
           const pick = pointerInfo.pickInfo;
-          if (pick?.hit && pick.pickedPoint && cameraController) {
-            if (pick.pickedMesh?.name === "plantGround") {
+          if (pick?.hit && pick.pickedMesh) {
+            let targetMesh: Mesh | null = pick.pickedMesh as Mesh;
+            while (targetMesh && !targetMesh.metadata?.data) {
+              targetMesh = targetMesh.parent as Mesh | null;
+            }
+
+            if (targetMesh && targetMesh.metadata?.data) {
+              const bundle = storageBundles.find(
+                (b) => b.data.id === targetMesh!.metadata.data.id
+              );
+              if (bundle) {
+                selectStorage(bundle);
+                return;
+              }
+            }
+
+            if (pick.pickedPoint && cameraController && pick.pickedMesh?.name === "plantGround") {
               cameraController.animateTo({
                 target: new Vector3(pick.pickedPoint.x, 3, pick.pickedPoint.z),
               });
