@@ -29,7 +29,129 @@ function getPendulumGrainTopY(
 		: sensorTopY;
 }
 
-export type GrainVisualMode = "level" | "heatmap";
+interface SensorPoint {
+	x: number;
+	y: number;
+	z: number;
+	temp: number;
+}
+
+function extractSensorPoints(
+	levelMap: LevelMap | undefined,
+	type: StorageType,
+	dimensions: { width: number; height: number; depth: number; radius: number },
+	sensorTopY: number,
+	sensorBottomY: number
+): SensorPoint[] {
+	const points: SensorPoint[] = [];
+	if (!levelMap) return points;
+
+	if (type === "SILO") {
+		if (levelMap.centralPendulum) {
+			const sCount = levelMap.centralPendulum.length;
+			levelMap.centralPendulum.forEach((s, idx) => {
+				if (s.level === "in_grain" && s.temperature < 100) {
+					const y =
+						sCount > 1
+							? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
+							: (sensorTopY + sensorBottomY) / 2;
+					points.push({ x: 0, y, z: 0, temp: s.temperature });
+				}
+			});
+		}
+
+		const arcRings = levelMap.arcRings || [];
+		const ringRadii = [dimensions.radius * 0.45, dimensions.radius * 0.8];
+		arcRings.forEach((ring, rIdx) => {
+			const r = ringRadii[rIdx] || dimensions.radius * 0.6;
+			const pList = ring.pendulums || [];
+			pList.forEach((p, pIdx) => {
+				const theta = (pIdx / pList.length) * Math.PI * 2;
+				const px = r * Math.cos(theta);
+				const pz = r * Math.sin(theta);
+				const sCount = p.length;
+				p.forEach((s, idx) => {
+					if (s.level === "in_grain" && s.temperature < 100) {
+						const y =
+							sCount > 1
+								? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
+								: (sensorTopY + sensorBottomY) / 2;
+						points.push({ x: px, y, z: pz, temp: s.temperature });
+					}
+				});
+			});
+		});
+	} else {
+		const arcRings = levelMap.arcRings || [];
+		const totalSectors = arcRings.length;
+		const usableDepth = dimensions.depth * 0.78;
+		const zStep = totalSectors > 1 ? usableDepth / (totalSectors - 1) : 0;
+
+		arcRings.forEach((sector, secIdx) => {
+			const secZ = totalSectors > 1 ? -usableDepth / 2 + secIdx * zStep : 0;
+			const pList = sector.pendulums;
+			const count = pList.length;
+			const usableWidth = dimensions.width * 0.72;
+			const xStep = count > 1 ? usableWidth / (count - 1) : 0;
+
+			pList.forEach((p, pIdx) => {
+				const px = count > 1 ? -usableWidth / 2 + pIdx * xStep : 0;
+				const pz = secZ;
+				const sCount = p.length;
+				p.forEach((s, idx) => {
+					if (s.level === "in_grain" && s.temperature < 100) {
+						const y =
+							sCount > 1
+								? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
+								: (sensorTopY + sensorBottomY) / 2;
+						points.push({ x: px, y, z: pz, temp: s.temperature });
+					}
+				});
+			});
+		});
+	}
+
+	return points;
+}
+
+function calculateVertexColors(
+	positions: number[],
+	sensors: SensorPoint[],
+	defaultTemp: number
+): number[] {
+	const colors: number[] = [];
+	const vertexCount = positions.length / 3;
+
+	for (let i = 0; i < vertexCount; i++) {
+		const vx = positions[i * 3];
+		const vy = positions[i * 3 + 1];
+		const vz = positions[i * 3 + 2];
+
+		let temp = defaultTemp;
+		if (sensors.length > 0) {
+			let sumWeight = 0.00001;
+			let sumTemp = defaultTemp * 0.00001;
+
+			for (let s = 0; s < sensors.length; s++) {
+				const dx = vx - sensors[s].x;
+				const dy = vy - sensors[s].y;
+				const dz = vz - sensors[s].z;
+				const distSq = dx * dx + dy * dy + dz * dz;
+				const w = 1.0 / (distSq * Math.sqrt(distSq) + 0.35);
+				sumWeight += w;
+				sumTemp += sensors[s].temp * w;
+			}
+			temp = sumTemp / sumWeight;
+		}
+
+		const [r, g, b] = temperatureToRGB(temp);
+		colors.push(r, g, b, 0.65);
+	}
+
+	return colors;
+}
+
+export type GrainVisualMode = "level" | "heatmap_fast" | "heatmap_volumetric";
 
 export function applyGrainVolumeMode(
 	grainMesh: Mesh,
@@ -38,16 +160,24 @@ export function applyGrainVolumeMode(
 ): void {
 	if (!grainMesh.metadata) return;
 
-	grainMesh.useVertexColors = false;
-	grainMesh.hasVertexAlpha = false;
-
-	if (mode === "heatmap") {
-		// Modo Heatmap: Aplica o ShaderMaterial de Raymarching Volumétrico 3D
-		if (grainMesh.metadata.heatmapMat) {
-			grainMesh.material = grainMesh.metadata.heatmapMat;
+	if (mode === "heatmap_volumetric") {
+		// Modo Heatmap Volumétrico (Shader Raymarching 3D na GPU)
+		grainMesh.useVertexColors = false;
+		grainMesh.hasVertexAlpha = false;
+		if (grainMesh.metadata.volumetricMat) {
+			grainMesh.material = grainMesh.metadata.volumetricMat;
+		}
+	} else if (mode === "heatmap_fast") {
+		// Modo Heatmap Leve (Cores de Vértice interpoladas por CPU, 100% fluido em qualquer GPU)
+		grainMesh.useVertexColors = true;
+		grainMesh.hasVertexAlpha = true;
+		if (grainMesh.metadata.fastHeatmapMat) {
+			grainMesh.material = grainMesh.metadata.fastHeatmapMat;
 		}
 	} else {
-		// Modo Nível: Aplica o StandardMaterial 100% monocromático uniforme da temperatura média
+		// Modo Nível: Monocromático 100% uniforme da temperatura média
+		grainMesh.useVertexColors = false;
+		grainMesh.hasVertexAlpha = false;
 		if (grainMesh.metadata.levelMat) {
 			const levelMat = grainMesh.metadata.levelMat as StandardMaterial;
 			const temp = avgTemp ?? grainMesh.metadata.avgTemp ?? 23;
@@ -429,21 +559,26 @@ export function renderGrainVolume(
 	}
 
 	// ==========================================
-	// Monta a geometria calculada com normais
+	// Monta a geometria calculada com normais e cores de vértices para o Heatmap Leve
 	// ==========================================
 	const normals: number[] = [];
 	VertexData.ComputeNormals(positions, indices, normals);
+
+	// Pré-computa cores térmicas de cada vértice na CPU (utilizado no Heatmap Leve)
+	const sensorPoints = extractSensorPoints(levelMap, type, dimensions, sensorTopY, sensorBottomY);
+	const vertexColors = calculateVertexColors(positions, sensorPoints, avgTemp);
 
 	const vertexData = new VertexData();
 	vertexData.positions = positions;
 	vertexData.indices = indices;
 	vertexData.normals = normals;
+	vertexData.colors = vertexColors;
 	vertexData.applyToMesh(grainMesh);
 
 	grainMesh.isPickable = false;
 
-	// 1. Criação do Shader Material Volumétrico para Heatmap 3D (Raymarching)
-	const heatmapMat = createVolumetricHeatmapMaterial(scene, {
+	// 1. Shader Material Volumétrico para Heatmap 3D (Raymarching de Alta Fidelidade)
+	const volumetricMat = createVolumetricHeatmapMaterial(scene, {
 		dimensions,
 		storageType: type,
 		baseY,
@@ -451,19 +586,29 @@ export function renderGrainVolume(
 		levelMap,
 	});
 
-	// 2. Criação do Material Standard Monocromático para o Modo Nível
+	// 2. Material Standard com Cores de Vértice para o Heatmap Leve (Rápido e 100% Fluido)
+	const fastHeatmapMat = new StandardMaterial(`grainFastHeatmapMat_${Math.random()}`, scene);
+	fastHeatmapMat.backFaceCulling = false;
+	fastHeatmapMat.alpha = 0.65;
+	fastHeatmapMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
+	fastHeatmapMat.specularColor = new Color3(0.08, 0.08, 0.08);
+	fastHeatmapMat.emissiveColor = new Color3(0.4, 0.4, 0.4);
+
+	// 3. Material Standard Monocromático para o Modo Nível
 	const levelMat = new StandardMaterial(`grainLevelMat_${Math.random()}`, scene);
 	levelMat.backFaceCulling = false;
 
 	grainMesh.metadata = {
 		avgTemp,
-		heatmapMat,
+		volumetricMat,
+		fastHeatmapMat,
 		levelMat,
 	};
 
 	// Garante liberação de memória GPU ao destruir a malha
 	grainMesh.onDisposeObservable.add(() => {
-		heatmapMat.dispose();
+		volumetricMat.dispose();
+		fastHeatmapMat.dispose();
 		levelMat.dispose();
 	});
 

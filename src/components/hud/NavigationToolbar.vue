@@ -66,13 +66,13 @@ defineEmits<{
 
 			<div class="nav-divider"></div>
 
-			<!-- Alternador de Visualização: Nível vs Heatmap -->
+			<!-- Alternador de Visualização: Nível vs Heatmap Leve vs Volumétrico -->
 			<div class="nav-group mode-toggle-group">
 				<button
 					class="nav-btn"
 					:class="{ active: (visualMode || 'level') === 'level' }"
 					@click="$emit('set-visual-mode', 'level')"
-					title="Modo Nível: Exibe a massa de grãos com relevo na cor natural"
+					title="Modo Nível: Exibe a massa de grãos com relevo na cor da temperatura média"
 				>
 					<span class="btn-icon">🌾</span>
 					<span class="btn-label">Nível</span>
@@ -80,12 +80,22 @@ defineEmits<{
 
 				<button
 					class="nav-btn"
-					:class="{ active: (visualMode || 'level') === 'heatmap' }"
-					@click="$emit('set-visual-mode', 'heatmap')"
-					title="Modo Heatmap: Exibe o mapa de calor térmico volumétrico 3D"
+					:class="{ active: visualMode === 'heatmap_fast' }"
+					@click="$emit('set-visual-mode', 'heatmap_fast')"
+					title="Heatmap Leve: Mapa de calor por vértices ultrarrápido (Zero custo GPU, 60 FPS garantido)"
+				>
+					<span class="btn-icon">⚡</span>
+					<span class="btn-label">Heatmap Leve</span>
+				</button>
+
+				<button
+					class="nav-btn"
+					:class="{ active: visualMode === 'heatmap_volumetric' }"
+					@click="$emit('set-visual-mode', 'heatmap_volumetric')"
+					title="Heatmap Volumétrico: Raymarching 3D contínuo via Shader de alta fidelidade"
 				>
 					<span class="btn-icon">🔥</span>
-					<span class="btn-label">Heatmap</span>
+					<span class="btn-label">Volumétrico</span>
 				</button>
 			</div>
 
