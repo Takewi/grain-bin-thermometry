@@ -145,12 +145,18 @@ export function useDigitalTwin() {
 
         // Hover do Mouse nos Badges de Temperatura
         case PointerEventTypes.POINTERMOVE: {
-          if (isPointerDragging) {
+          if (isPointerDragging || !selectedStorage.value || !scene) {
             if (hoveredSensor.value) hoveredSensor.value = null;
             return;
           }
 
-          const pick = pointerInfo.pickInfo;
+          // Raycast direcionado aos badges de sensores (ignora cascas e paredes externas)
+          const pick = scene.pick(
+            scene.pointerX,
+            scene.pointerY,
+            (mesh) => mesh.metadata?.isSensorBadge === true
+          );
+
           if (
             pick?.hit &&
             pick.pickedMesh &&
