@@ -46,12 +46,12 @@ varying vec3 vNormal;
 varying vec2 vUV;
 
 uniform vec3 cameraPosition;
-uniform vec3 uDimensions;      // (radius/width, height, depth)
+uniform vec3 uDimensions;      // (halfX, height, halfZ)
 uniform int uStorageType;      // 0 = SILO, 1 = WAREHOUSE
 uniform float uBaseY;
 uniform float uTopY;
 
-// Sensores (x, y, z locais relativos ao centro do silo, w = temp)
+// Sensores (x, y, z locais relativos ao centro da estrutura, w = temp)
 #define MAX_SENSORS 256
 uniform vec4 uSensors[MAX_SENSORS];
 uniform int uSensorCount;
@@ -82,8 +82,8 @@ vec3 getThermalColor(float temp) {
 float sampleTemperature(vec3 pLocal) {
     if (uSensorCount == 0) return 23.0;
 
-    float sumWeight = 0.0001;
-    float sumTemp = 0.0023;
+    float sumWeight = 0.00001;
+    float sumTemp = 0.00023;
 
     for (int i = 0; i < MAX_SENSORS; i++) {
         if (i >= uSensorCount) break;
@@ -99,30 +99,17 @@ float sampleTemperature(vec3 pLocal) {
     return sumTemp / sumWeight;
 }
 
-// Verificação de inclusão no volume físico de grãos (estendendo-se até as paredes laterais)
-bool isInsideGrain(vec3 pLocal) {
-    if (pLocal.y < uBaseY || pLocal.y > uTopY) return false;
+// Verificação de permanência do raio dentro da estrutura
+bool isInsideVolume(vec3 pLocal) {
+    if (pLocal.y < uBaseY - 0.15) return false;
 
     if (uStorageType == 0) {
-        // Silo cilíndrico com cone de talude
+        // Silo cilíndrico
         float r = length(pLocal.xz);
-        float maxR = uDimensions.x;
-        if (r > maxR) return false;
-
-        float normR = r / maxR;
-        float coneTop = uTopY - normR * (uTopY * 0.22);
-        if (pLocal.y > coneTop) return false;
-        return true;
+        return r <= uDimensions.x * 1.04;
     } else {
-        // Armazém Graneleiro com arco longitudinal (vai 100% até as paredes laterais)
-        float halfW = uDimensions.x;
-        float halfD = uDimensions.z;
-        if (abs(pLocal.x) > halfW || abs(pLocal.z) > halfD) return false;
-
-        float normX = abs(pLocal.x) / halfW;
-        float archTop = uTopY - pow(normX, 1.8) * (uTopY * 0.38);
-        if (pLocal.y > archTop) return false;
-        return true;
+        // Armazém Graneleiro
+        return abs(pLocal.x) <= uDimensions.x * 1.04 && abs(pLocal.z) <= uDimensions.z * 1.04;
     }
 }
 
@@ -130,28 +117,31 @@ void main() {
     vec3 rayDir = normalize(vWorldPosition - cameraPosition);
     vec3 viewDir = -rayDir;
 
-    // Extensão do trajeto do raio no interior da massa
+    // 1. Amostragem imediata da superfície na face poligonal (garante visibilidade do topo de cima)
+    float surfaceTemp = sampleTemperature(vLocalPosition);
+    vec3 surfaceCol = getThermalColor(surfaceTemp);
+    float surfaceNorm = clamp((surfaceTemp - 18.0) / 16.0, 0.0, 1.0);
+
+    // Contribuição inicial da casca
+    float initAlpha = 0.28 + surfaceNorm * 0.12;
+    vec4 accumColor = vec4(surfaceCol * (0.80 + surfaceNorm * 0.40) * initAlpha, initAlpha);
+
+    // 2. Raymarching pelo interior da massa
     float marchDistance = max(uDimensions.x, uDimensions.z) * 2.05;
-    int STEPS = 32;
+    int STEPS = 28;
     float stepSize = marchDistance / float(STEPS);
 
-    vec4 accumColor = vec4(0.0);
-
-    for (int i = 0; i < 32; i++) {
+    for (int i = 1; i <= 28; i++) {
         vec3 sampleLocal = vLocalPosition + rayDir * (float(i) * stepSize);
 
-        if (isInsideGrain(sampleLocal)) {
+        if (isInsideVolume(sampleLocal)) {
             float temp = sampleTemperature(sampleLocal);
             vec3 col = getThermalColor(temp);
 
-            // Densidade volumétrica e brilho térmico
             float tempNorm = clamp((temp - 18.0) / 16.0, 0.0, 1.0);
-            float stepAlpha = 0.038 + tempNorm * 0.046;
-            
-            // Autoiluminação do foco de calor
-            vec3 emission = col * (0.85 + tempNorm * 0.65);
+            float stepAlpha = 0.032 + tempNorm * 0.042;
+            vec3 emission = col * (0.80 + tempNorm * 0.60);
 
-            // Acumulação de volume transparente (front-to-back ray compositing)
             float transmittance = 1.0 - accumColor.a;
             accumColor.rgb += emission * stepAlpha * transmittance;
             accumColor.a += stepAlpha * transmittance;
@@ -162,12 +152,8 @@ void main() {
         }
     }
 
-    if (accumColor.a <= 0.01) {
-        discard;
-    }
-
-    // Realce de silhueta suave nas bordas
-    float fresnel = pow(1.0 - max(0.0, dot(viewDir, vNormal)), 2.6);
+    // 3. Realce suave de curvatura nas bordas (Fresnel)
+    float fresnel = pow(1.0 - max(0.0, dot(viewDir, normalize(vNormal))), 2.5);
     accumColor.rgb += accumColor.rgb * fresnel * 0.20;
 
     gl_FragColor = accumColor;

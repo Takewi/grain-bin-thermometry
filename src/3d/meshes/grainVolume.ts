@@ -47,21 +47,24 @@ export function applyGrainVolumeMode(
 ): void {
   if (!grainMesh.metadata) return;
 
+  grainMesh.useVertexColors = false;
+  grainMesh.hasVertexAlpha = false;
+
   if (mode === "heatmap") {
     // Modo Heatmap: Aplica o ShaderMaterial de Raymarching Volumétrico 3D
     if (grainMesh.metadata.heatmapMat) {
       grainMesh.material = grainMesh.metadata.heatmapMat;
     }
   } else {
-    // Modo Nível: Aplica o StandardMaterial monocromático uniforme da temperatura média
+    // Modo Nível: Aplica o StandardMaterial 100% monocromático uniforme da temperatura média
     if (grainMesh.metadata.levelMat) {
       const levelMat = grainMesh.metadata.levelMat as StandardMaterial;
       const temp = avgTemp ?? (grainMesh.metadata.avgTemp ?? 23);
       const [r, g, b] = temperatureToRGB(temp);
       levelMat.diffuseColor = new Color3(r, g, b);
       levelMat.specularColor = new Color3(0.12, 0.12, 0.12);
-      levelMat.emissiveColor = new Color3(r * 0.45, g * 0.45, b * 0.45);
-      levelMat.alpha = 0.44;
+      levelMat.emissiveColor = new Color3(r * 0.50, g * 0.50, b * 0.50);
+      levelMat.alpha = 0.55;
       levelMat.backFaceCulling = false;
       levelMat.transparencyMode = StandardMaterial.MATERIAL_ALPHABLEND;
       grainMesh.material = levelMat;
@@ -418,150 +421,8 @@ export function renderGrainVolume(
   }
 
   // ==========================================
-  // Extração dos Sensores 3D para Heatmap IDW
+  // Monta a geometria calculada com normais
   // ==========================================
-  interface ThermalSamplePoint {
-    x: number;
-    y: number;
-    z: number;
-    temp: number;
-  }
-  const samplePoints: ThermalSamplePoint[] = [];
-
-  if (levelMap) {
-    if (type === "SILO") {
-      // 1. Pêndulo central
-      if (levelMap.centralPendulum) {
-        const sCount = levelMap.centralPendulum.length;
-        levelMap.centralPendulum.forEach((s, idx) => {
-          if (s.level === "in_grain" && s.temperature < 100) {
-            const y =
-              sCount > 1
-                ? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
-                : (sensorTopY + sensorBottomY) / 2;
-            samplePoints.push({ x: 0, y, z: 0, temp: s.temperature });
-          }
-        });
-      }
-
-      // 2. Anéis concêntricos
-      const arcRings = levelMap.arcRings || [];
-      // Anel interno (raio ~45%)
-      if (arcRings[0]?.pendulums) {
-        const pList = arcRings[0].pendulums;
-        const rInner = dimensions.radius * 0.45;
-        pList.forEach((p, pIdx) => {
-          const theta = (pIdx / pList.length) * Math.PI * 2;
-          const px = rInner * Math.cos(theta);
-          const pz = rInner * Math.sin(theta);
-          const sCount = p.length;
-          p.forEach((s, idx) => {
-            if (s.level === "in_grain" && s.temperature < 100) {
-              const y =
-                sCount > 1
-                  ? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
-                  : (sensorTopY + sensorBottomY) / 2;
-              samplePoints.push({ x: px, y, z: pz, temp: s.temperature });
-            }
-          });
-        });
-      }
-
-      // Anel externo (raio ~80%)
-      if (arcRings[1]?.pendulums) {
-        const pList = arcRings[1].pendulums;
-        const rOuter = dimensions.radius * 0.80;
-        pList.forEach((p, pIdx) => {
-          const theta = (pIdx / pList.length) * Math.PI * 2;
-          const px = rOuter * Math.cos(theta);
-          const pz = rOuter * Math.sin(theta);
-          const sCount = p.length;
-          p.forEach((s, idx) => {
-            if (s.level === "in_grain" && s.temperature < 100) {
-              const y =
-                sCount > 1
-                  ? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
-                  : (sensorTopY + sensorBottomY) / 2;
-              samplePoints.push({ x: px, y, z: pz, temp: s.temperature });
-            }
-          });
-        });
-      }
-    } else {
-      // Armazém Graneleiro
-      const arcRings = levelMap.arcRings || [];
-      const totalSectors = arcRings.length;
-      const usableDepth = dimensions.depth * 0.78;
-      const zStep = totalSectors > 1 ? usableDepth / (totalSectors - 1) : 0;
-
-      arcRings.forEach((sector, secIdx) => {
-        const secZ = totalSectors > 1 ? -usableDepth / 2 + secIdx * zStep : 0;
-        const pList = sector.pendulums;
-        const count = pList.length;
-        const usableWidth = dimensions.width * 0.72;
-        const xStep = count > 1 ? usableWidth / (count - 1) : 0;
-
-        pList.forEach((p, pIdx) => {
-          const x = count > 1 ? -usableWidth / 2 + pIdx * xStep : 0;
-          const z = secZ;
-
-          const u = x / (dimensions.width * 0.5);
-          const archFactor = Math.max(0, 1 - u * u);
-          const pCableTopY = sensorTopY + archFactor * 0.70;
-          const pCableBottomY = sensorBottomY + archFactor * 0.20;
-
-          const sCount = p.length;
-          p.forEach((s, idx) => {
-            if (s.level === "in_grain" && s.temperature < 100) {
-              const y =
-                sCount > 1
-                  ? pCableTopY - (idx / (sCount - 1)) * (pCableTopY - pCableBottomY)
-                  : (pCableTopY + pCableBottomY) / 2;
-              samplePoints.push({ x, y, z, temp: s.temperature });
-            }
-          });
-        });
-      });
-    }
-  }
-
-  // ==========================================
-  // Interpolação Térmica 3D (Heatmap Volumétrico IDW Suave)
-  // ==========================================
-  const colors: number[] = [];
-  const vertexCount = positions.length / 3;
-
-  for (let i = 0; i < vertexCount; i++) {
-    const vx = positions[i * 3];
-    const vy = positions[i * 3 + 1];
-    const vz = positions[i * 3 + 2];
-
-    let sumWeight = 0;
-    let sumTemp = 0;
-
-    for (let k = 0; k < samplePoints.length; k++) {
-      const sp = samplePoints[k];
-      const dx = vx - sp.x;
-      const dy = vy - sp.y;
-      const dz = vz - sp.z;
-      const distSq = dx * dx + dy * dy + dz * dz;
-      // IDW refinado com decaimento suave
-      const w = 1 / (Math.pow(distSq, 1.25) + 0.35);
-      sumWeight += w;
-      sumTemp += sp.temp * w;
-    }
-
-    const vertTemp = sumWeight > 0 ? sumTemp / sumWeight : 23.0;
-    const [r, g, b] = temperatureToRGB(vertTemp);
-
-    // Alpha adaptativo: áreas quentes têm levemente maior opacidade e brilho mantendo saturação
-    const tempRatio = Math.max(0, Math.min(1, (vertTemp - 18) / 16));
-    const vertAlpha = 0.36 + tempRatio * 0.16;
-
-    colors.push(r, g, b, vertAlpha);
-  }
-
-  // Monta a geometria calculada com normais e cores térmicas por vértice
   const normals: number[] = [];
   VertexData.ComputeNormals(positions, indices, normals);
 
@@ -569,7 +430,6 @@ export function renderGrainVolume(
   vertexData.positions = positions;
   vertexData.indices = indices;
   vertexData.normals = normals;
-  vertexData.colors = colors;
   vertexData.applyToMesh(grainMesh);
 
   grainMesh.isPickable = false;
