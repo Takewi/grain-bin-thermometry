@@ -1,4 +1,4 @@
-# 🌾 3D Thermometry & Digital Twin (PoC)
+# 🌾 3D Thermometry (PoC)
 
 > **Prova de Conceito (PoC) e Teste Prático com Babylon.js** para visualização tridimensional interativa de termometria e volumetria de grãos em silos verticais e armazéns graneleiros.
 

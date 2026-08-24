@@ -1,10 +1,4 @@
-import {
-  ShaderMaterial,
-  Effect,
-  Scene,
-  Vector3,
-  Color4,
-} from "@babylonjs/core";
+import { ShaderMaterial, Effect, Scene, Vector3, Color4 } from "@babylonjs/core";
 import type { StorageType, LevelMap } from "@/types/storage";
 import { THERMOMETRY_CONFIG } from "../constants";
 
@@ -162,169 +156,167 @@ void main() {
 
 // Registra os shaders no ShadersStore do Babylon.js
 export function registerVolumetricHeatmapShaders(): void {
-  if (!Effect.ShadersStore[`${VOLUMETRIC_HEATMAP_SHADER_NAME}VertexShader`]) {
-    Effect.ShadersStore[`${VOLUMETRIC_HEATMAP_SHADER_NAME}VertexShader`] =
-      vertexShaderSource;
-  }
-  if (!Effect.ShadersStore[`${VOLUMETRIC_HEATMAP_SHADER_NAME}FragmentShader`]) {
-    Effect.ShadersStore[`${VOLUMETRIC_HEATMAP_SHADER_NAME}FragmentShader`] =
-      fragmentShaderSource;
-  }
+	if (!Effect.ShadersStore[`${VOLUMETRIC_HEATMAP_SHADER_NAME}VertexShader`]) {
+		Effect.ShadersStore[`${VOLUMETRIC_HEATMAP_SHADER_NAME}VertexShader`] = vertexShaderSource;
+	}
+	if (!Effect.ShadersStore[`${VOLUMETRIC_HEATMAP_SHADER_NAME}FragmentShader`]) {
+		Effect.ShadersStore[`${VOLUMETRIC_HEATMAP_SHADER_NAME}FragmentShader`] = fragmentShaderSource;
+	}
 }
 
 export interface VolumetricHeatmapUniformParams {
-  dimensions: { width: number; height: number; depth: number; radius: number };
-  storageType: StorageType;
-  baseY: number;
-  topY: number;
-  levelMap?: LevelMap;
+	dimensions: { width: number; height: number; depth: number; radius: number };
+	storageType: StorageType;
+	baseY: number;
+	topY: number;
+	levelMap?: LevelMap;
 }
 
 /**
  * Cria o material de shader volumétrico raymarching para o heatmap 3D
  */
 export function createVolumetricHeatmapMaterial(
-  scene: Scene,
-  params: VolumetricHeatmapUniformParams
+	scene: Scene,
+	params: VolumetricHeatmapUniformParams
 ): ShaderMaterial {
-  registerVolumetricHeatmapShaders();
+	registerVolumetricHeatmapShaders();
 
-  const mat = new ShaderMaterial(
-    `volumetricHeatmapMat_${Math.random()}`,
-    scene,
-    {
-      vertex: VOLUMETRIC_HEATMAP_SHADER_NAME,
-      fragment: VOLUMETRIC_HEATMAP_SHADER_NAME,
-    },
-    {
-      attributes: ["position", "normal", "uv"],
-      uniforms: [
-        "world",
-        "viewProjection",
-        "cameraPosition",
-        "uDimensions",
-        "uStorageType",
-        "uBaseY",
-        "uTopY",
-        "uSensors",
-        "uSensorCount",
-      ],
-      needAlphaBlending: true,
-      needAlphaTesting: false,
-    }
-  );
+	const mat = new ShaderMaterial(
+		`volumetricHeatmapMat_${Math.random()}`,
+		scene,
+		{
+			vertex: VOLUMETRIC_HEATMAP_SHADER_NAME,
+			fragment: VOLUMETRIC_HEATMAP_SHADER_NAME,
+		},
+		{
+			attributes: ["position", "normal", "uv"],
+			uniforms: [
+				"world",
+				"viewProjection",
+				"cameraPosition",
+				"uDimensions",
+				"uStorageType",
+				"uBaseY",
+				"uTopY",
+				"uSensors",
+				"uSensorCount",
+			],
+			needAlphaBlending: true,
+			needAlphaTesting: false,
+		}
+	);
 
-  mat.backFaceCulling = false;
-  updateVolumetricHeatmapUniforms(mat, params);
+	mat.backFaceCulling = false;
+	updateVolumetricHeatmapUniforms(mat, params);
 
-  return mat;
+	return mat;
 }
 
 /**
  * Atualiza todos os uniforms de sensores e geometria no ShaderMaterial
  */
 export function updateVolumetricHeatmapUniforms(
-  mat: ShaderMaterial,
-  params: VolumetricHeatmapUniformParams
+	mat: ShaderMaterial,
+	params: VolumetricHeatmapUniformParams
 ): void {
-  const { dimensions, storageType, baseY, topY, levelMap } = params;
+	const { dimensions, storageType, baseY, topY, levelMap } = params;
 
-  const halfX = storageType === "SILO" ? dimensions.radius * 0.96 : dimensions.width * 0.44;
-  const halfZ = storageType === "SILO" ? dimensions.radius * 0.96 : dimensions.depth * 0.44;
+	const halfX = storageType === "SILO" ? dimensions.radius * 0.96 : dimensions.width * 0.44;
+	const halfZ = storageType === "SILO" ? dimensions.radius * 0.96 : dimensions.depth * 0.44;
 
-  mat.setVector3("uDimensions", new Vector3(halfX, dimensions.height, halfZ));
-  mat.setInt("uStorageType", storageType === "SILO" ? 0 : 1);
-  mat.setFloat("uBaseY", baseY);
-  mat.setFloat("uTopY", topY);
+	mat.setVector3("uDimensions", new Vector3(halfX, dimensions.height, halfZ));
+	mat.setInt("uStorageType", storageType === "SILO" ? 0 : 1);
+	mat.setFloat("uBaseY", baseY);
+	mat.setFloat("uTopY", topY);
 
-  // Extrai coordenadas locais e temperaturas dos sensores ativos
-  const sensorBottomY = THERMOMETRY_CONFIG.SENSOR_BOTTOM_OFFSET_Y;
-  const sensorTopY = Math.max(
-    sensorBottomY + 1.0,
-    dimensions.height - THERMOMETRY_CONFIG.SENSOR_TOP_OFFSET_Y
-  );
+	// Extrai coordenadas locais e temperaturas dos sensores ativos
+	const sensorBottomY = THERMOMETRY_CONFIG.SENSOR_BOTTOM_OFFSET_Y;
+	const sensorTopY = Math.max(
+		sensorBottomY + 1.0,
+		dimensions.height - THERMOMETRY_CONFIG.SENSOR_TOP_OFFSET_Y
+	);
 
-  const sensorVectors: Color4[] = [];
+	const sensorVectors: Color4[] = [];
 
-  if (levelMap) {
-    if (storageType === "SILO") {
-      // 1. Pêndulo central
-      if (levelMap.centralPendulum) {
-        const sCount = levelMap.centralPendulum.length;
-        levelMap.centralPendulum.forEach((s, idx) => {
-          if (s.level === "in_grain" && s.temperature < 100) {
-            const y =
-              sCount > 1
-                ? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
-                : (sensorTopY + sensorBottomY) / 2;
-            sensorVectors.push(new Color4(0, y, 0, s.temperature));
-          }
-        });
-      }
+	if (levelMap) {
+		if (storageType === "SILO") {
+			// 1. Pêndulo central
+			if (levelMap.centralPendulum) {
+				const sCount = levelMap.centralPendulum.length;
+				levelMap.centralPendulum.forEach((s, idx) => {
+					if (s.level === "in_grain" && s.temperature < 100) {
+						const y =
+							sCount > 1
+								? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
+								: (sensorTopY + sensorBottomY) / 2;
+						sensorVectors.push(new Color4(0, y, 0, s.temperature));
+					}
+				});
+			}
 
-      // 2. Anéis concêntricos (Anel 1 ~45% e Anel 2 ~80%)
-      const arcRings = levelMap.arcRings || [];
-      const ringRadii = [dimensions.radius * 0.45, dimensions.radius * 0.80];
+			// 2. Anéis concêntricos (Anel 1 ~45% e Anel 2 ~80%)
+			const arcRings = levelMap.arcRings || [];
+			const ringRadii = [dimensions.radius * 0.45, dimensions.radius * 0.8];
 
-      arcRings.forEach((ring, rIdx) => {
-        const r = ringRadii[rIdx] || dimensions.radius * 0.6;
-        const pList = ring.pendulums || [];
-        pList.forEach((p, pIdx) => {
-          const theta = (pIdx / pList.length) * Math.PI * 2;
-          const px = r * Math.cos(theta);
-          const pz = r * Math.sin(theta);
-          const sCount = p.length;
-          p.forEach((s, idx) => {
-            if (s.level === "in_grain" && s.temperature < 100) {
-              const y =
-                sCount > 1
-                  ? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
-                  : (sensorTopY + sensorBottomY) / 2;
-              sensorVectors.push(new Color4(px, y, pz, s.temperature));
-            }
-          });
-        });
-      });
-    } else {
-      // Armazém Graneleiro
-      const arcRings = levelMap.arcRings || [];
-      const totalSectors = arcRings.length;
-      const usableDepth = dimensions.depth * 0.78;
-      const zStep = totalSectors > 1 ? usableDepth / (totalSectors - 1) : 0;
+			arcRings.forEach((ring, rIdx) => {
+				const r = ringRadii[rIdx] || dimensions.radius * 0.6;
+				const pList = ring.pendulums || [];
+				pList.forEach((p, pIdx) => {
+					const theta = (pIdx / pList.length) * Math.PI * 2;
+					const px = r * Math.cos(theta);
+					const pz = r * Math.sin(theta);
+					const sCount = p.length;
+					p.forEach((s, idx) => {
+						if (s.level === "in_grain" && s.temperature < 100) {
+							const y =
+								sCount > 1
+									? sensorTopY - (idx / (sCount - 1)) * (sensorTopY - sensorBottomY)
+									: (sensorTopY + sensorBottomY) / 2;
+							sensorVectors.push(new Color4(px, y, pz, s.temperature));
+						}
+					});
+				});
+			});
+		} else {
+			// Armazém Graneleiro
+			const arcRings = levelMap.arcRings || [];
+			const totalSectors = arcRings.length;
+			const usableDepth = dimensions.depth * 0.78;
+			const zStep = totalSectors > 1 ? usableDepth / (totalSectors - 1) : 0;
 
-      arcRings.forEach((sector, secIdx) => {
-        const secZ = totalSectors > 1 ? -usableDepth / 2 + secIdx * zStep : 0;
-        const pList = sector.pendulums;
-        const count = pList.length;
-        const usableWidth = dimensions.width * 0.72;
-        const xStep = count > 1 ? usableWidth / (count - 1) : 0;
+			arcRings.forEach((sector, secIdx) => {
+				const secZ = totalSectors > 1 ? -usableDepth / 2 + secIdx * zStep : 0;
+				const pList = sector.pendulums;
+				const count = pList.length;
+				const usableWidth = dimensions.width * 0.72;
+				const xStep = count > 1 ? usableWidth / (count - 1) : 0;
 
-        pList.forEach((p, pIdx) => {
-          const x = count > 1 ? -usableWidth / 2 + pIdx * xStep : 0;
-          const z = secZ;
+				pList.forEach((p, pIdx) => {
+					const x = count > 1 ? -usableWidth / 2 + pIdx * xStep : 0;
+					const z = secZ;
 
-          const u = x / (dimensions.width * 0.5);
-          const archFactor = Math.max(0, 1 - u * u);
-          const pCableTopY = sensorTopY + archFactor * 0.70;
-          const pCableBottomY = sensorBottomY + archFactor * 0.20;
+					const u = x / (dimensions.width * 0.5);
+					const archFactor = Math.max(0, 1 - u * u);
+					const pCableTopY = sensorTopY + archFactor * 0.7;
+					const pCableBottomY = sensorBottomY + archFactor * 0.2;
 
-          const sCount = p.length;
-          p.forEach((s, idx) => {
-            if (s.level === "in_grain" && s.temperature < 100) {
-              const y =
-                sCount > 1
-                  ? pCableTopY - (idx / (sCount - 1)) * (pCableTopY - pCableBottomY)
-                  : (pCableTopY + pCableBottomY) / 2;
-              sensorVectors.push(new Color4(x, y, z, s.temperature));
-            }
-          });
-        });
-      });
-    }
-  }
+					const sCount = p.length;
+					p.forEach((s, idx) => {
+						if (s.level === "in_grain" && s.temperature < 100) {
+							const y =
+								sCount > 1
+									? pCableTopY - (idx / (sCount - 1)) * (pCableTopY - pCableBottomY)
+									: (pCableTopY + pCableBottomY) / 2;
+							sensorVectors.push(new Color4(x, y, z, s.temperature));
+						}
+					});
+				});
+			});
+		}
+	}
 
-  // Preenche todos os sensores até o limite do array de uniforms (256)
-  const clampedVectors = sensorVectors.slice(0, 256);
-  mat.setColor4Array("uSensors", clampedVectors);
-  mat.setInt("uSensorCount", clampedVectors.length);
+	// Preenche todos os sensores até o limite do array de uniforms (256)
+	const clampedVectors = sensorVectors.slice(0, 256);
+	mat.setColor4Array("uSensors", clampedVectors);
+	mat.setInt("uSensorCount", clampedVectors.length);
 }
