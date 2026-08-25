@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { ref, computed } from "vue";
 import type { SiloSummary, StorageDetail } from "@/types/storage";
 import { getSensorVisualInfo } from "@/3d/utils/colorScale";
+import { ChevronDown, ChevronUp, X } from "lucide-vue-next";
 
 const props = defineProps<{
 	summary: SiloSummary;
@@ -12,6 +13,12 @@ const props = defineProps<{
 defineEmits<{
 	(e: "close"): void;
 }>();
+
+const isMinimized = ref(false);
+
+function toggleMinimize() {
+	isMinimized.value = !isMinimized.value;
+}
 
 const maxTempVisual = computed(() => getSensorVisualInfo(props.summary.tempMax));
 const medTempVisual = computed(() => getSensorVisualInfo(props.summary.tempMed));
@@ -26,22 +33,58 @@ const fillPercentage = computed(() => {
 </script>
 
 <template>
-	<aside class="silo-sidebar">
-		<!-- Cabeçalho do Silo -->
-		<div class="sidebar-header">
-			<div class="title-group">
-				<span class="type-tag" :class="summary.type.toLowerCase()">
-					{{ summary.type === "SILO" ? "Silo Metálico" : "Armazém Graneleiro" }}
-				</span>
-				<h2 class="silo-name">{{ summary.name }}</h2>
-				<span class="product-badge">{{ summary.product }}</span>
-			</div>
-			<button class="btn-close" @click="$emit('close')" title="Voltar à visão geral">
-				&times;
-			</button>
+	<aside class="silo-sidebar" :class="{ 'is-minimized': isMinimized }">
+		<!-- Alça visual para mobile (toque para expandir/minimizar) -->
+		<div class="mobile-handle-bar" @click="toggleMinimize">
+			<div class="handle-pill"></div>
 		</div>
 
-		<div class="sidebar-scroll-content">
+		<!-- Cabeçalho do Silo -->
+		<div class="sidebar-header" :class="{ clickable: isMinimized }" @click="isMinimized ? toggleMinimize() : null">
+			<div class="title-group">
+				<div class="title-top-row">
+					<span class="type-tag" :class="summary.type.toLowerCase()">
+						{{ summary.type === "SILO" ? "Silo Metálico" : "Armazém Graneleiro" }}
+					</span>
+					<span class="product-badge">{{ summary.product }}</span>
+				</div>
+
+				<div class="title-main-row">
+					<h2 class="silo-name">{{ summary.name }}</h2>
+
+					<!-- Indicadores Rápidos quando Minimizado -->
+					<div v-if="isMinimized" class="minimized-quick-stats">
+						<span class="quick-kpi" :style="{ color: maxTempVisual.hex }">
+							{{ summary.tempMax.toFixed(1) }}°C
+						</span>
+						<span class="quick-sep">&bull;</span>
+						<span class="quick-kpi fill-kpi">
+							{{ fillPercentage }}%
+						</span>
+					</div>
+				</div>
+			</div>
+
+			<div class="header-actions">
+				<button
+					class="btn-action btn-minimize"
+					@click.stop="toggleMinimize"
+					:title="isMinimized ? 'Expandir painel de informações' : 'Minimizar painel'"
+				>
+					<ChevronUp v-if="isMinimized" class="action-icon" :size="16" />
+					<ChevronDown v-else class="action-icon" :size="16" />
+				</button>
+				<button
+					class="btn-action btn-close"
+					@click.stop="$emit('close')"
+					title="Fechar e voltar à visão geral"
+				>
+					<X class="action-icon" :size="16" />
+				</button>
+			</div>
+		</div>
+
+		<div v-show="!isMinimized" class="sidebar-scroll-content">
 			<!-- Cards de Temperatura -->
 			<section class="section-card">
 				<h3 class="section-title">Termometria Geral</h3>
@@ -128,16 +171,16 @@ const fillPercentage = computed(() => {
 <style scoped>
 .silo-sidebar {
 	position: absolute;
-	top: 58px;
+	top: 64px;
 	right: 16px;
 	width: min(350px, calc(100vw - 32px));
-	max-height: calc(100vh - 74px);
+	max-height: calc(100vh - 80px);
 	box-sizing: border-box;
 	background: rgba(18, 20, 26, 0.92);
 	backdrop-filter: blur(16px);
 	-webkit-backdrop-filter: blur(16px);
 	border: 1px solid rgba(255, 255, 255, 0.12);
-	border-radius: 10px;
+	border-radius: 12px;
 	display: flex;
 	flex-direction: column;
 	color: #f1f5f9;
@@ -145,37 +188,87 @@ const fillPercentage = computed(() => {
 	pointer-events: auto;
 	z-index: 30;
 	overflow: hidden;
+	transition: max-height 0.28s cubic-bezier(0.16, 1, 0.3, 1), box-shadow 0.2s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 	animation: slideIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.silo-sidebar.is-minimized {
+	max-height: 64px;
+	box-shadow: 0 8px 24px rgba(0, 0, 0, 0.45);
 }
 
 @keyframes slideIn {
 	from {
 		opacity: 0;
-		transform: translateX(30px);
+		transform: translateY(-8px) scale(0.98);
 	}
 	to {
 		opacity: 1;
-		transform: translateX(0);
+		transform: translateY(0) scale(1);
 	}
 }
 
+.mobile-handle-bar {
+	display: none;
+	width: 100%;
+	height: 12px;
+	align-items: center;
+	justify-content: center;
+	cursor: pointer;
+	padding-top: 4px;
+}
+
+.handle-pill {
+	width: 36px;
+	height: 4px;
+	background: rgba(255, 255, 255, 0.25);
+	border-radius: 2px;
+	transition: background 0.15s;
+}
+
+.mobile-handle-bar:hover .handle-pill {
+	background: rgba(255, 255, 255, 0.45);
+}
+
 .sidebar-header {
-	padding: 16px;
+	padding: 12px 14px;
 	border-bottom: 1px solid rgba(255, 255, 255, 0.08);
 	display: flex;
 	justify-content: space-between;
-	align-items: flex-start;
+	align-items: center;
 	background: rgba(255, 255, 255, 0.02);
+	user-select: none;
+	transition: background 0.15s ease;
+}
+
+.sidebar-header.clickable {
+	cursor: pointer;
+}
+
+.sidebar-header.clickable:hover {
+	background: rgba(255, 255, 255, 0.05);
+}
+
+.silo-sidebar.is-minimized .sidebar-header {
+	border-bottom: none;
 }
 
 .title-group {
 	display: flex;
 	flex-direction: column;
-	gap: 4px;
+	gap: 3px;
+	min-width: 0;
+	flex: 1;
+}
+
+.title-top-row {
+	display: flex;
+	align-items: center;
+	gap: 6px;
 }
 
 .type-tag {
-	font-size: 0.68rem;
+	font-size: 0.65rem;
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.05em;
@@ -196,24 +289,63 @@ const fillPercentage = computed(() => {
 	border: 1px solid rgba(168, 85, 247, 0.3);
 }
 
-.silo-name {
-	font-size: 1.15rem;
-	font-weight: 700;
-	margin: 0;
-	color: #ffffff;
-}
-
 .product-badge {
-	font-size: 0.78rem;
+	font-size: 0.72rem;
 	color: #94a3b8;
 }
 
-.btn-close {
+.title-main-row {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	flex-wrap: wrap;
+}
+
+.silo-name {
+	font-size: 1.05rem;
+	font-weight: 700;
+	margin: 0;
+	color: #ffffff;
+	white-space: nowrap;
+	overflow: hidden;
+	text-overflow: ellipsis;
+}
+
+.minimized-quick-stats {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	font-size: 0.8rem;
+	font-weight: 600;
+	background: rgba(0, 0, 0, 0.35);
+	padding: 2px 8px;
+	border-radius: 12px;
+	border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.quick-kpi {
+	font-family: "JetBrains Mono", monospace;
+}
+
+.quick-kpi.fill-kpi {
+	color: #f59e0b;
+}
+
+.quick-sep {
+	color: rgba(255, 255, 255, 0.2);
+}
+
+.header-actions {
+	display: flex;
+	align-items: center;
+	gap: 6px;
+	margin-left: 8px;
+}
+
+.btn-action {
 	background: rgba(255, 255, 255, 0.08);
 	border: 1px solid rgba(255, 255, 255, 0.12);
 	color: #cbd5e1;
-	font-size: 1.4rem;
-	line-height: 1;
 	width: 28px;
 	height: 28px;
 	border-radius: 6px;
@@ -221,20 +353,26 @@ const fillPercentage = computed(() => {
 	display: flex;
 	align-items: center;
 	justify-content: center;
-	transition: all 0.15s;
+	transition: all 0.15s ease;
+	padding: 0;
 }
 
-.btn-close:hover {
+.btn-action:hover {
 	background: rgba(255, 255, 255, 0.2);
 	color: #ffffff;
+	border-color: rgba(255, 255, 255, 0.25);
+}
+
+.action-icon {
+	display: block;
 }
 
 .sidebar-scroll-content {
-	padding: 16px;
+	padding: 14px;
 	overflow-y: auto;
 	display: flex;
 	flex-direction: column;
-	gap: 14px;
+	gap: 12px;
 }
 
 .section-card {
@@ -245,7 +383,7 @@ const fillPercentage = computed(() => {
 }
 
 .section-title {
-	font-size: 0.75rem;
+	font-size: 0.72rem;
 	font-weight: 600;
 	text-transform: uppercase;
 	letter-spacing: 0.06em;
@@ -361,5 +499,44 @@ const fillPercentage = computed(() => {
 	text-align: right;
 	border-top: 1px solid rgba(255, 255, 255, 0.04);
 	padding-top: 6px;
+}
+
+/* ==========================================
+   Comportamento Responsivo para Mobile
+   ========================================== */
+@media (max-width: 768px) {
+	.silo-sidebar {
+		top: auto;
+		bottom: 16px;
+		left: 16px;
+		right: 16px;
+		width: auto;
+		max-width: calc(100vw - 32px);
+		margin: 0 auto;
+		max-height: min(52vh, 380px);
+		border-radius: 14px;
+		box-shadow: 0 12px 36px rgba(0, 0, 0, 0.7);
+	}
+
+	.silo-sidebar.is-minimized {
+		max-height: 56px;
+	}
+
+	.mobile-handle-bar {
+		display: flex;
+	}
+
+	.sidebar-header {
+		padding: 6px 12px 10px 12px;
+	}
+
+	.silo-sidebar.is-minimized .sidebar-header {
+		padding: 4px 12px 8px 12px;
+	}
+
+	.btn-action {
+		width: 32px;
+		height: 32px;
+	}
 }
 </style>

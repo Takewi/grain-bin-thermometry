@@ -140,7 +140,7 @@ defineEmits<{
 <style scoped>
 .nav-toolbar-container {
 	position: absolute;
-	top: 58px;
+	top: 64px;
 	left: 16px;
 	pointer-events: auto;
 	z-index: 20;
