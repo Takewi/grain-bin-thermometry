@@ -185,7 +185,7 @@ export function createRoofMetalTexture(scene: Scene, id: string): DynamicTexture
 }
 
 /**
- * Gera textura metálica mais escura (chapa de zinco/aço grafite) para o teto curvado do graneleiro
+ * Gera textura metálica escura (chapa de zinco/aço grafite) com ondulações e emendas industriais mais amplas e rústicas
  */
 export function createDarkWarehouseRoofTexture(scene: Scene, id: string): DynamicTexture {
 	const width = 512;
@@ -193,53 +193,53 @@ export function createDarkWarehouseRoofTexture(scene: Scene, id: string): Dynami
 	const texture = new DynamicTexture(`wh_dark_roof_tex_${id}`, { width, height }, scene, false);
 	const ctx = texture.getContext() as CanvasRenderingContext2D;
 
-	// Fundo metálico chumbo / grafite escuro
+	// Fundo metálico chumbo / grafite escuro uniforme
 	ctx.fillStyle = "#4a5360";
 	ctx.fillRect(0, 0, width, height);
 
-	// Ondulações profundas com sombras e cristas contrastadas
-	const waveStep = 16;
+	// Ondulações mais amplas, encorpadas e visíveis (estilo chapa trapezoidal/ondulada de silo)
+	const waveStep = 32;
 	for (let x = 0; x < width; x += waveStep) {
-		// Sombra profunda da calha da onda
-		ctx.fillStyle = "rgba(20, 24, 32, 0.45)";
-		ctx.fillRect(x, 0, 4, height);
+		// Sombra suave e profunda na cava da onda
+		ctx.fillStyle = "rgba(18, 22, 30, 0.46)";
+		ctx.fillRect(x, 0, 8, height);
 
-		// Corpo metálico iluminado da onda
-		ctx.fillStyle = "rgba(110, 122, 138, 0.42)";
-		ctx.fillRect(x + 4, 0, 8, height);
+		// Corpo metálico iluminado da crista da chapa
+		ctx.fillStyle = "rgba(115, 128, 145, 0.38)";
+		ctx.fillRect(x + 8, 0, 16, height);
 
-		// Crista brilhante com reflexo especular
-		ctx.fillStyle = "rgba(200, 215, 235, 0.32)";
-		ctx.fillRect(x + 4, 0, 2, height);
+		// Destaque de luz/brilho no topo da onda
+		ctx.fillStyle = "rgba(205, 220, 240, 0.28)";
+		ctx.fillRect(x + 8, 0, 4, height);
 	}
 
-	// Emendas transversais de sobreposição das chapas a cada 64px
-	for (let y = 0; y < height; y += 64) {
+	// Emendas transversais de sobreposição das chapas a cada 128px (painéis mais amplos e rústicos)
+	for (let y = 0; y < height; y += 128) {
 		// Sombra da sobreposição de chapas
 		ctx.fillStyle = "rgba(15, 18, 26, 0.55)";
-		ctx.fillRect(0, y - 1, width, 3);
+		ctx.fillRect(0, y - 2, width, 4);
 
-		// Borda clara da chapa
-		ctx.fillStyle = "rgba(180, 195, 215, 0.38)";
-		ctx.fillRect(0, y + 2, width, 1);
+		// Borda clara iluminada da chapa
+		ctx.fillStyle = "rgba(190, 205, 225, 0.38)";
+		ctx.fillRect(0, y + 2, width, 2);
 
-		// Linha de fixadores / rebites galvanizados contrastantes
-		for (let x = 8; x < width; x += 16) {
-			ctx.fillStyle = "rgba(15, 18, 26, 0.7)";
+		// Linha de fixadores / parafusos galvanizados contrastantes espaçados
+		for (let x = 16; x < width; x += 32) {
+			ctx.fillStyle = "rgba(15, 18, 26, 0.75)";
 			ctx.beginPath();
-			ctx.arc(x, y + 1, 1.8, 0, Math.PI * 2);
+			ctx.arc(x, y, 2.4, 0, Math.PI * 2);
 			ctx.fill();
 
-			ctx.fillStyle = "rgba(230, 240, 255, 0.85)";
+			ctx.fillStyle = "rgba(235, 245, 255, 0.85)";
 			ctx.beginPath();
-			ctx.arc(x - 0.5, y + 0.5, 0.9, 0, Math.PI * 2);
+			ctx.arc(x - 0.6, y - 0.6, 1.2, 0, Math.PI * 2);
 			ctx.fill();
 		}
 	}
 
-	// Micro-granulação metálica fina
-	ctx.fillStyle = "rgba(255, 255, 255, 0.025)";
-	for (let i = 0; i < 600; i++) {
+	// Micro-granulação sutil e homogênea (sem ruído excessivo)
+	ctx.fillStyle = "rgba(255, 255, 255, 0.02)";
+	for (let i = 0; i < 250; i++) {
 		const rx = Math.random() * width;
 		const ry = Math.random() * height;
 		ctx.fillRect(rx, ry, 1, 1);

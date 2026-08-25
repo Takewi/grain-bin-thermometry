@@ -62,11 +62,12 @@ export function buildStorageStructure(scene: Scene, item: PositionedStorage): St
 	const roofMat = new StandardMaterial(`roofMat_${data.id}`, scene);
 	const roofTex = createDarkWarehouseRoofTexture(scene, String(data.id));
 	if (data.type === "SILO") {
-		roofTex.uScale = 6;
+		roofTex.uScale = 5;
 		roofTex.vScale = 2;
 	} else {
-		roofTex.uScale = Math.round(dimensions.width / 2.5);
-		roofTex.vScale = Math.round(dimensions.depth / 3.0);
+		// No armazém, o escalonamento métrico é aplicado diretamente nas coordenadas UV da malha (CreateRibbon)
+		roofTex.uScale = 1;
+		roofTex.vScale = 1;
 	}
 	roofMat.diffuseTexture = roofTex;
 	roofMat.diffuseColor = new Color3(0.55, 0.58, 0.65); // Tonalidade grafite/aço escuro
@@ -459,18 +460,20 @@ export function buildStorageStructure(scene: Scene, item: PositionedStorage): St
 		const numX = 24;
 		const numZ = 12;
 		const pathArray: Vector3[][] = [];
+		const roofTileScaleX = 5.0; // 5.0m por repetição de chapa na largura (textura mais ampla e rústica como a do silo)
+		const roofTileScaleZ = 5.0; // 5.0m por repetição no comprimento
 		const roofUvs: Vector2[] = [];
 
 		for (let j = 0; j <= numZ; j++) {
 			const z = -roofDepth / 2 + (j / numZ) * roofDepth;
 			const path: Vector3[] = [];
-			const v = (j / numZ) * (roofDepth / 3.0);
+			const v = (j / numZ) * (roofDepth / roofTileScaleZ);
 			for (let i = 0; i <= numX; i++) {
 				const x = -roofWidth / 2 + (i / numX) * roofWidth;
 				const u = x / (roofWidth / 2); // De -1 a +1
 				const y = baseY + roofHeight * (1 - u * u); // Arco suave parabólico cobrindo 100% da largura
 				path.push(new Vector3(x, y, z));
-				roofUvs.push(new Vector2((i / numX) * (roofWidth / 2.5), v));
+				roofUvs.push(new Vector2((i / numX) * (roofWidth / roofTileScaleX), v));
 			}
 			pathArray.push(path);
 		}
